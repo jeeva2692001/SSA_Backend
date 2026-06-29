@@ -11,12 +11,9 @@ export class TestController {
   async getTest(req: NextRequest): Promise<NextResponse> {
     try {
       const data = await this.testService.getTestMessage();
-      // Respond with just the data; the 200 status code in the header indicates success
       return NextResponse.json(data, { status: 200 });
     } catch (error: any) {
-      // Error is only displayed on the console
       console.error('Error in TestController:', error);
-      // Send failure purely via the 500 status code in the header, without a body
       return new NextResponse(null, { status: 500 });
     }
   }

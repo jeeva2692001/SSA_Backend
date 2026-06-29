@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
-import { TestController } from '../../../src/controllers/test.controller';
-import { testMiddleware } from '../../../src/middlewares/test.middleware';
+import { TestController, testMiddleware } from '../../../src/modules/test';
 
 const testController = new TestController();
 
