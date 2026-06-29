@@ -6,7 +6,7 @@ export class TestModel {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column()
+  @Column({ type: 'varchar' })
   message!: string;
 
   @Column({

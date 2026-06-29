@@ -5,13 +5,13 @@ export class UserModel {
   @PrimaryGeneratedColumn()
   id!: number;
 
-  @Column({ unique: true })
+  @Column({ type: 'varchar', unique: true })
   userId!: string;
 
-  @Column()
+  @Column({ type: 'varchar' })
   name!: string;
 
-  @Column({ unique: true })
+  @Column({ type: 'varchar', unique: true })
   email!: string;
 
   @Column({
@@ -20,10 +20,10 @@ export class UserModel {
   })
   role!: string;
 
-  @Column()
+  @Column({ type: 'varchar' })
   password!: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   avatar?: string;
 
   @CreateDateColumn()

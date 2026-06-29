@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "npm run db:init && next dev",
     "build": "next build",
-    "start": "next dev",
+    "start": "npm run db:init && next dev",
     "start:prod": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:init": "npx tsx src/shared/config/db-init.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
