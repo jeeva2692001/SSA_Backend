@@ -3,6 +3,7 @@ import { DataSource } from "typeorm";
 import { envConfig } from "./env.config";
 import { TestModel } from "../../modules/test/models/test.model";
 import { UserModel } from "../../modules/auth/models/user.model";
+import { CompanyModel } from "../../modules/company/models/company.model";
 
 const globalRef = global as unknown as { AppDataSource: DataSource | undefined };
 
@@ -15,7 +16,7 @@ export const AppDataSource = globalRef.AppDataSource || new DataSource({
   database: envConfig.database.database,
   synchronize: true,
   logging: true,
-  entities: [TestModel, UserModel],
+  entities: [TestModel, UserModel, CompanyModel],
   migrations: [],
   subscribers: [],
 });
@@ -47,6 +48,33 @@ export async function getDataSource() {
       }
     } catch (err) {
       console.error('[Seed] Error seeding default admin user:', err);
+    }
+
+    // Seed default company if database has no companies
+    try {
+      const companyRepo = AppDataSource.getRepository(CompanyModel);
+      const companyCount = await companyRepo.count();
+      if (companyCount === 0) {
+        const bcrypt = require('bcryptjs');
+        const hashedPassword = await bcrypt.hash('Admin@123', 10);
+        const defaultCompany = companyRepo.create({
+          companyId: 'COM-001',
+          name: 'Sundram Architects',
+          status: 'Active',
+          address: 'Chennai, Tamil Nadu, India',
+          email: 'sundar@sundramarchitects.com',
+          contactPerson: 'Sundar Sundram',
+          mobileNumber: '9876543210',
+          designation: 'Proprietor',
+          gstNo: '33ABCDE1234F1Z0',
+          panNo: 'ABCDE1234F',
+          password: hashedPassword,
+        });
+        await companyRepo.save(defaultCompany);
+        console.log('[Seed] Default company seeded successfully.');
+      }
+    } catch (err) {
+      console.error('[Seed] Error seeding default company:', err);
     }
   }
   return AppDataSource;

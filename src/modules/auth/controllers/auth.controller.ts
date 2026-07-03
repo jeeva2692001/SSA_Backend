@@ -9,6 +9,29 @@ export class AuthController {
     this.authService = new AuthService();
   }
 
+  async companyLogin(req: NextRequest): Promise<NextResponse> {
+    try {
+      const body = await req.json();
+      const { companyId, password } = body;
+
+      if (!companyId || !password) {
+        return NextResponse.json(
+          { message: 'Company ID and password are required.' },
+          { status: 400 }
+        );
+      }
+
+      const result = await this.authService.companyLogin(companyId, password);
+      return NextResponse.json(result, { status: 200 });
+    } catch (error: any) {
+      console.error('Error in AuthController.companyLogin:', error.message);
+      return NextResponse.json(
+        { message: error.message || 'Authentication failed.' },
+        { status: 401 }
+      );
+    }
+  }
+
   async login(req: NextRequest): Promise<NextResponse> {
     try {
       const body = await req.json();

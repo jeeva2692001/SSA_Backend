@@ -2,15 +2,58 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { UserRepository } from '../repositories/user.repository';
 import { UserModel } from '../models/user.model';
+import { CompanyRepository } from '../../company/repositories/company.repository';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-key-for-architect-erp';
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '1d';
 
 export class AuthService {
   private userRepository: UserRepository;
+  private companyRepository: CompanyRepository;
 
   constructor() {
     this.userRepository = new UserRepository();
+    this.companyRepository = new CompanyRepository();
+  }
+
+  async companyLogin(companyId: string, password: string): Promise<{ user: any; token: string }> {
+    const company = await this.companyRepository.findByCompanyId(companyId);
+    if (!company) {
+      throw new Error('Invalid Company ID or Password.');
+    }
+
+    if (!company.password) {
+      throw new Error('Company account has no password set. Please contact your administrator.');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, company.password);
+    if (!isPasswordValid) {
+      throw new Error('Invalid Company ID or Password.');
+    }
+
+    const token = jwt.sign(
+      {
+        id: company.id,
+        companyId: company.companyId,
+        email: company.email,
+        role: 'Company',
+        name: company.name,
+      },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRY as any }
+    );
+
+    const companyResponse = {
+      id: company.companyId,
+      userId: company.companyId,
+      name: company.name,
+      email: company.email,
+      role: 'Company',
+      contactPerson: company.contactPerson,
+      status: company.status,
+    };
+
+    return { user: companyResponse, token };
   }
 
   async login(userId: string, password: string): Promise<{ user: any; token: string }> {
