@@ -35,16 +35,17 @@ export class AuthController {
   async login(req: NextRequest): Promise<NextResponse> {
     try {
       const body = await req.json();
-      const { userId, password } = body;
+      const { username, userId, password } = body;
+      const targetUser = username || userId;
 
-      if (!userId || !password) {
+      if (!targetUser || !password) {
         return NextResponse.json(
-          { message: 'User ID and password are required.' },
+          { message: 'Username and password are required.' },
           { status: 400 }
         );
       }
 
-      const result = await this.authService.login(userId, password);
+      const result = await this.authService.login(targetUser, password);
       return NextResponse.json(result, { status: 200 });
     } catch (error: any) {
       console.error('Error in AuthController.login:', error.message);

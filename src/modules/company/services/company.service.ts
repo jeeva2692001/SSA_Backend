@@ -14,7 +14,7 @@ export class CompanyService {
   }
 
   async registerCompany(companyData: Partial<CompanyModel>): Promise<CompanyModel> {
-    if (!companyData.name || !companyData.email || !companyData.address || !companyData.contactPerson || !companyData.mobileNumber || !companyData.password) {
+    if (!companyData.name || !companyData.email || !companyData.address || !companyData.contactPerson || !companyData.mobileNumber || !companyData.password || !companyData.gstNo || !companyData.panNo) {
       throw new Error('Missing required company fields.');
     }
 
@@ -64,8 +64,14 @@ export class CompanyService {
     }
     if (companyData.mobileNumber) company.mobileNumber = companyData.mobileNumber;
     if (companyData.designation !== undefined) company.designation = companyData.designation;
-    if (companyData.gstNo !== undefined) company.gstNo = companyData.gstNo;
-    if (companyData.panNo !== undefined) company.panNo = companyData.panNo;
+    if (companyData.gstNo !== undefined) {
+      if (!companyData.gstNo.trim()) throw new Error('GST number is required.');
+      company.gstNo = companyData.gstNo;
+    }
+    if (companyData.panNo !== undefined) {
+      if (!companyData.panNo.trim()) throw new Error('PAN number is required.');
+      company.panNo = companyData.panNo;
+    }
     if (companyData.status) company.status = companyData.status;
 
     if (companyData.password) {
