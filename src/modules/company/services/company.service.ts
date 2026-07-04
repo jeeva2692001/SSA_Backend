@@ -83,6 +83,12 @@ export class CompanyService {
   }
 
   async deleteCompany(companyId: string): Promise<boolean> {
-    return await this.companyRepository.deleteByCompanyId(companyId);
+    const company = await this.companyRepository.findByCompanyId(companyId);
+    if (!company) {
+      throw new Error('Company not found.');
+    }
+    company.status = 'Inactive';
+    await this.companyRepository.createCompany(company);
+    return true;
   }
 }

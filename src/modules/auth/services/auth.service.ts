@@ -23,6 +23,10 @@ export class AuthService {
       throw new Error('Invalid Username or Password.');
     }
 
+    if (company.status === 'Inactive') {
+      throw new Error('This account has been deactivated. Please contact your administrator.');
+    }
+
     if (!company.password) {
       throw new Error('Company account has no password set. Please contact your administrator.');
     }
@@ -92,6 +96,10 @@ export class AuthService {
     // Try to find in CompanyRepository
     const company = await this.companyRepository.findByContactPerson(username);
     if (company) {
+      if (company.status === 'Inactive') {
+        throw new Error('This account has been deactivated. Please contact your administrator.');
+      }
+
       if (!company.password) {
         throw new Error('Company account has no password set. Please contact your administrator.');
       }

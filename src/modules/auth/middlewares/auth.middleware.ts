@@ -18,6 +18,9 @@ export async function authMiddleware(req: NextRequest, next: (user: any) => Prom
     let user = null;
     if (decoded.role === 'Company') {
       user = await authService.getCompanyById(decoded.id);
+      if (user && user.status === 'Inactive') {
+        return NextResponse.json({ message: 'This account has been deactivated.' }, { status: 401 });
+      }
     } else {
       user = await authService.getUserById(decoded.id);
     }
