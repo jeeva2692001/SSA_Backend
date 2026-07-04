@@ -12,16 +12,16 @@ export class AuthController {
   async companyLogin(req: NextRequest): Promise<NextResponse> {
     try {
       const body = await req.json();
-      const { companyId, password } = body;
+      const { username, password } = body;
 
-      if (!companyId || !password) {
+      if (!username || !password) {
         return NextResponse.json(
-          { message: 'Company ID and password are required.' },
+          { message: 'Username and password are required.' },
           { status: 400 }
         );
       }
 
-      const result = await this.authService.companyLogin(companyId, password);
+      const result = await this.authService.companyLogin(username, password);
       return NextResponse.json(result, { status: 200 });
     } catch (error: any) {
       console.error('Error in AuthController.companyLogin:', error.message);
@@ -79,8 +79,21 @@ export class AuthController {
     }
   }
 
-  async getProfile(req: NextRequest, currentUser: UserModel): Promise<NextResponse> {
+  async getProfile(req: NextRequest, currentUser: any): Promise<NextResponse> {
     try {
+      if (currentUser.role === 'Company') {
+        const companyResponse = {
+          id: currentUser.companyId,
+          userId: currentUser.companyId,
+          name: currentUser.name,
+          email: currentUser.email,
+          role: 'Company',
+          contactPerson: currentUser.contactPerson,
+          status: currentUser.status,
+        };
+        return NextResponse.json(companyResponse, { status: 200 });
+      }
+
       const userResponse = {
         id: `USR-${String(currentUser.id).padStart(3, '0')}`,
         userId: currentUser.userId,

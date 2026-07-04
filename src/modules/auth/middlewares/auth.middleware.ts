@@ -15,10 +15,19 @@ export async function authMiddleware(req: NextRequest, next: (user: any) => Prom
   try {
     const decoded = await authService.verifyToken(token);
     
-    const user = await authService.getUserById(decoded.id);
+    let user = null;
+    if (decoded.role === 'Company') {
+      user = await authService.getCompanyById(decoded.id);
+    } else {
+      user = await authService.getUserById(decoded.id);
+    }
+
     if (!user) {
       return NextResponse.json({ message: 'User does not exist.' }, { status: 401 });
     }
+
+    // Attach role to the user object dynamically
+    (user as any).role = decoded.role;
 
     return await next(user);
   } catch (error: any) {

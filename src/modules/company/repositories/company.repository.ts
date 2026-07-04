@@ -23,6 +23,13 @@ export class CompanyRepository {
     return await repo.findOne({ where: { companyId } });
   }
 
+  async findByContactPerson(contactPerson: string): Promise<CompanyModel | null> {
+    const repo = await this.getRepository();
+    return await repo.createQueryBuilder('company')
+      .where('LOWER(company.contactPerson) = :contactPerson', { contactPerson: contactPerson.toLowerCase() })
+      .getOne();
+  }
+
   async findByEmail(email: string): Promise<CompanyModel | null> {
     const repo = await this.getRepository();
     return await repo.findOne({ where: { email } });

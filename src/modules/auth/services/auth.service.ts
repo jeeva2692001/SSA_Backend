@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { UserRepository } from '../repositories/user.repository';
 import { UserModel } from '../models/user.model';
 import { CompanyRepository } from '../../company/repositories/company.repository';
+import { CompanyModel } from '../../company/models/company.model';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-key-for-architect-erp';
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '1d';
@@ -16,10 +17,10 @@ export class AuthService {
     this.companyRepository = new CompanyRepository();
   }
 
-  async companyLogin(companyId: string, password: string): Promise<{ user: any; token: string }> {
-    const company = await this.companyRepository.findByCompanyId(companyId);
+  async companyLogin(username: string, password: string): Promise<{ user: any; token: string }> {
+    const company = await this.companyRepository.findByContactPerson(username);
     if (!company) {
-      throw new Error('Invalid Company ID or Password.');
+      throw new Error('Invalid Username or Password.');
     }
 
     if (!company.password) {
@@ -28,7 +29,7 @@ export class AuthService {
 
     const isPasswordValid = await bcrypt.compare(password, company.password);
     if (!isPasswordValid) {
-      throw new Error('Invalid Company ID or Password.');
+      throw new Error('Invalid Username or Password.');
     }
 
     const token = jwt.sign(
@@ -124,5 +125,9 @@ export class AuthService {
 
   async getUserById(id: number): Promise<UserModel | null> {
     return await this.userRepository.findById(id);
+  }
+
+  async getCompanyById(id: number): Promise<CompanyModel | null> {
+    return await this.companyRepository.findById(id);
   }
 }

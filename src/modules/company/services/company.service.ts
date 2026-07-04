@@ -23,6 +23,11 @@ export class CompanyService {
       throw new Error('Company email is already registered.');
     }
 
+    const existingContactPerson = await this.companyRepository.findByContactPerson(companyData.contactPerson);
+    if (existingContactPerson) {
+      throw new Error('Contact person name (username) is already registered.');
+    }
+
     // Generate unique companyId (COM-00X)
     const count = await this.companyRepository.countCompanies();
     const companyId = `COM-${String(count + 1).padStart(3, '0')}`;
@@ -50,7 +55,13 @@ export class CompanyService {
       }
       company.email = companyData.email;
     }
-    if (companyData.contactPerson) company.contactPerson = companyData.contactPerson;
+    if (companyData.contactPerson) {
+      const existing = await this.companyRepository.findByContactPerson(companyData.contactPerson);
+      if (existing && existing.companyId !== companyId) {
+        throw new Error('Contact person name (username) is already registered.');
+      }
+      company.contactPerson = companyData.contactPerson;
+    }
     if (companyData.mobileNumber) company.mobileNumber = companyData.mobileNumber;
     if (companyData.designation !== undefined) company.designation = companyData.designation;
     if (companyData.gstNo !== undefined) company.gstNo = companyData.gstNo;
