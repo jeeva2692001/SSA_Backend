@@ -4,6 +4,7 @@ import { envConfig } from "./env.config";
 import { TestModel } from "../../modules/test/models/test.model";
 import { UserModel } from "../../modules/auth/models/user.model";
 import { CompanyModel } from "../../modules/company/models/company.model";
+import { EmployeeModel } from "../../modules/employee/models/employee.model";
 
 const globalRef = global as unknown as { AppDataSource: DataSource | undefined };
 
@@ -16,7 +17,7 @@ export const AppDataSource = globalRef.AppDataSource || new DataSource({
   database: envConfig.database.database,
   synchronize: true,
   logging: true,
-  entities: [TestModel, UserModel, CompanyModel],
+  entities: [TestModel, UserModel, CompanyModel, EmployeeModel],
   migrations: [],
   subscribers: [],
 });
