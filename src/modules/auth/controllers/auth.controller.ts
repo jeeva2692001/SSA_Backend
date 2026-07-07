@@ -9,19 +9,43 @@ export class AuthController {
     this.authService = new AuthService();
   }
 
-  async login(req: NextRequest): Promise<NextResponse> {
+  async companyLogin(req: NextRequest): Promise<NextResponse> {
     try {
       const body = await req.json();
-      const { userId, password } = body;
+      const { username, password } = body;
 
-      if (!userId || !password) {
+      if (!username || !password) {
         return NextResponse.json(
-          { message: 'User ID and password are required.' },
+          { message: 'Username and password are required.' },
           { status: 400 }
         );
       }
 
-      const result = await this.authService.login(userId, password);
+      const result = await this.authService.companyLogin(username, password);
+      return NextResponse.json(result, { status: 200 });
+    } catch (error: any) {
+      console.error('Error in AuthController.companyLogin:', error.message);
+      return NextResponse.json(
+        { message: error.message || 'Authentication failed.' },
+        { status: 401 }
+      );
+    }
+  }
+
+  async login(req: NextRequest): Promise<NextResponse> {
+    try {
+      const body = await req.json();
+      const { username, userId, password } = body;
+      const targetUser = username || userId;
+
+      if (!targetUser || !password) {
+        return NextResponse.json(
+          { message: 'Username and password are required.' },
+          { status: 400 }
+        );
+      }
+
+      const result = await this.authService.login(targetUser, password);
       return NextResponse.json(result, { status: 200 });
     } catch (error: any) {
       console.error('Error in AuthController.login:', error.message);
@@ -56,8 +80,21 @@ export class AuthController {
     }
   }
 
-  async getProfile(req: NextRequest, currentUser: UserModel): Promise<NextResponse> {
+  async getProfile(req: NextRequest, currentUser: any): Promise<NextResponse> {
     try {
+      if (currentUser.role === 'Company') {
+        const companyResponse = {
+          id: currentUser.companyId,
+          userId: currentUser.companyId,
+          name: currentUser.name,
+          email: currentUser.email,
+          role: 'Company',
+          contactPerson: currentUser.contactPerson,
+          status: currentUser.status,
+        };
+        return NextResponse.json(companyResponse, { status: 200 });
+      }
+
       const userResponse = {
         id: `USR-${String(currentUser.id).padStart(3, '0')}`,
         userId: currentUser.userId,

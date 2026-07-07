@@ -2,49 +2,139 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { UserRepository } from '../repositories/user.repository';
 import { UserModel } from '../models/user.model';
+import { CompanyRepository } from '../../company/repositories/company.repository';
+import { CompanyModel } from '../../company/models/company.model';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-key-for-architect-erp';
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '1d';
 
 export class AuthService {
   private userRepository: UserRepository;
+  private companyRepository: CompanyRepository;
 
   constructor() {
     this.userRepository = new UserRepository();
+    this.companyRepository = new CompanyRepository();
   }
 
-  async login(userId: string, password: string): Promise<{ user: any; token: string }> {
-    const user = await this.userRepository.findByUserId(userId);
-    if (!user) {
-      throw new Error('Invalid User ID or Password.');
+  async companyLogin(username: string, password: string): Promise<{ user: any; token: string }> {
+    const company = await this.companyRepository.findByContactPerson(username);
+    if (!company) {
+      throw new Error('Invalid Username or Password.');
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (company.status === 'Inactive') {
+      throw new Error('This account has been deactivated. Please contact your administrator.');
+    }
+
+    if (!company.password) {
+      throw new Error('Company account has no password set. Please contact your administrator.');
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, company.password);
     if (!isPasswordValid) {
-      throw new Error('Invalid User ID or Password.');
+      throw new Error('Invalid Username or Password.');
     }
 
     const token = jwt.sign(
       {
-        id: user.id,
-        userId: user.userId,
-        email: user.email,
-        role: user.role,
+        id: company.id,
+        companyId: company.companyId,
+        email: company.email,
+        role: 'Company',
+        name: company.name,
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRY as any }
     );
 
-    const userResponse = {
-      id: `USR-${String(user.id).padStart(3, '0')}`,
-      userId: user.userId,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      avatar: user.avatar,
+    const companyResponse = {
+      id: company.companyId,
+      userId: company.companyId,
+      name: company.name,
+      email: company.email,
+      role: 'Company',
+      contactPerson: company.contactPerson,
+      status: company.status,
     };
 
-    return { user: userResponse, token };
+    return { user: companyResponse, token };
+  }
+
+  async login(username: string, password: string): Promise<{ user: any; token: string }> {
+    // Try to find in UserRepository first
+    const user = await this.userRepository.findByUserId(username);
+    if (user) {
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
+        throw new Error('Invalid Username or Password.');
+      }
+
+      const token = jwt.sign(
+        {
+          id: user.id,
+          userId: user.userId,
+          email: user.email,
+          role: user.role,
+        },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRY as any }
+      );
+
+      const userResponse = {
+        id: `USR-${String(user.id).padStart(3, '0')}`,
+        userId: user.userId,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar,
+      };
+
+      return { user: userResponse, token };
+    }
+
+    // Try to find in CompanyRepository
+    const company = await this.companyRepository.findByContactPerson(username);
+    if (company) {
+      if (company.status === 'Inactive') {
+        throw new Error('This account has been deactivated. Please contact your administrator.');
+      }
+
+      if (!company.password) {
+        throw new Error('Company account has no password set. Please contact your administrator.');
+      }
+
+      const isPasswordValid = await bcrypt.compare(password, company.password);
+      if (!isPasswordValid) {
+        throw new Error('Invalid Username or Password.');
+      }
+
+      const token = jwt.sign(
+        {
+          id: company.id,
+          companyId: company.companyId,
+          email: company.email,
+          role: 'Company',
+          name: company.name,
+        },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRY as any }
+      );
+
+      const companyResponse = {
+        id: company.companyId,
+        userId: company.companyId,
+        name: company.name,
+        email: company.email,
+        role: 'Company',
+        contactPerson: company.contactPerson,
+        status: company.status,
+      };
+
+      return { user: companyResponse, token };
+    }
+
+    throw new Error('Invalid Username or Password.');
   }
 
   async register(userData: Partial<UserModel>): Promise<UserModel> {
@@ -81,5 +171,9 @@ export class AuthService {
 
   async getUserById(id: number): Promise<UserModel | null> {
     return await this.userRepository.findById(id);
+  }
+
+  async getCompanyById(id: number): Promise<CompanyModel | null> {
+    return await this.companyRepository.findById(id);
   }
 }
