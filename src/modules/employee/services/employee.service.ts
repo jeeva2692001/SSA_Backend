@@ -86,6 +86,8 @@ export class EmployeeService {
     if (!employee || employee.companyId !== companyId) {
       throw new Error('Employee not found.');
     }
-    return await this.employeeRepository.deleteByEmployeeId(employeeId);
+    employee.status = 'Inactive';
+    await this.employeeRepository.createEmployee(employee);
+    return true;
   }
 }
