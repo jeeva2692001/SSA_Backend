@@ -35,6 +35,9 @@ export class EmployeeModel {
   @Column({ type: 'varchar' })
   companyId!: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  branchId?: string;
+
   @CreateDateColumn()
   createdAt!: Date;
 
