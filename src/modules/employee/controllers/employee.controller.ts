@@ -15,7 +15,12 @@ export class EmployeeController {
         return NextResponse.json({ message: 'Company Identification is missing.' }, { status: 400 });
       }
 
-      const employees = await this.employeeService.getEmployees(companyId);
+      let employees;
+      if (user.role === 'Branch') {
+        employees = await this.employeeService.getEmployeesByBranch(user.branchId);
+      } else {
+        employees = await this.employeeService.getEmployees(companyId);
+      }
       return NextResponse.json(employees, { status: 200 });
     } catch (error: any) {
       console.error('Error in EmployeeController.getAll:', error.message);

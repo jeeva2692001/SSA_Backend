@@ -4,6 +4,8 @@ import { UserRepository } from '../repositories/user.repository';
 import { UserModel } from '../models/user.model';
 import { CompanyRepository } from '../../company/repositories/company.repository';
 import { CompanyModel } from '../../company/models/company.model';
+import { BranchModel } from '../../branch/models/branch.model';
+import { getDataSource } from '../../../shared/config/data-source';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-key-for-architect-erp';
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '1d';
@@ -134,6 +136,50 @@ export class AuthService {
       return { user: companyResponse, token };
     }
 
+    // Try to find in BranchRepository
+    const dataSource = await getDataSource();
+    const branchRepo = dataSource.getRepository<BranchModel>('BranchModel');
+    let branch = await branchRepo.findOne({ where: { branchId: username } });
+    if (!branch) {
+      branch = await branchRepo.findOne({ where: { code: username } });
+    }
+
+    if (branch) {
+      if (branch.status === 'Inactive') {
+        throw new Error('This branch has been deactivated. Please contact your administrator.');
+      }
+
+      const savedPassword = branch.password || await bcrypt.hash('Branch@123', 10);
+      const isPasswordValid = await bcrypt.compare(password, savedPassword);
+      if (!isPasswordValid) {
+        throw new Error('Invalid Username or Password.');
+      }
+
+      const token = jwt.sign(
+        {
+          id: branch.id,
+          branchId: branch.branchId,
+          role: 'Branch',
+          name: branch.name,
+          companyId: branch.companyId,
+        },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRY as any }
+      );
+
+      const branchResponse = {
+        id: branch.branchId,
+        userId: branch.branchId,
+        name: branch.name,
+        role: 'Branch',
+        code: branch.code,
+        manager: branch.manager,
+        companyId: branch.companyId,
+      };
+
+      return { user: branchResponse, token };
+    }
+
     throw new Error('Invalid Username or Password.');
   }
 
@@ -175,5 +221,60 @@ export class AuthService {
 
   async getCompanyById(id: number): Promise<CompanyModel | null> {
     return await this.companyRepository.findById(id);
+  }
+
+  async getBranchById(id: number): Promise<BranchModel | null> {
+    const dataSource = await getDataSource();
+    const branchRepo = dataSource.getRepository<BranchModel>('BranchModel');
+    return await branchRepo.findOne({ where: { id } });
+  }
+
+  async branchLogin(username: string, password: string): Promise<{ user: any; token: string }> {
+    const dataSource = await getDataSource();
+    const branchRepo = dataSource.getRepository<BranchModel>('BranchModel');
+    
+    // Find branch by branchId or code
+    let branch = await branchRepo.findOne({ where: { branchId: username } });
+    if (!branch) {
+      branch = await branchRepo.findOne({ where: { code: username } });
+    }
+
+    if (!branch) {
+      throw new Error('Invalid Username or Password.');
+    }
+
+    if (branch.status === 'Inactive') {
+      throw new Error('This branch has been deactivated. Please contact your administrator.');
+    }
+
+    const savedPassword = branch.password || await bcrypt.hash('Branch@123', 10);
+    const isPasswordValid = await bcrypt.compare(password, savedPassword);
+    if (!isPasswordValid) {
+      throw new Error('Invalid Username or Password.');
+    }
+
+    const token = jwt.sign(
+      {
+        id: branch.id,
+        branchId: branch.branchId,
+        role: 'Branch',
+        name: branch.name,
+        companyId: branch.companyId,
+      },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRY as any }
+    );
+
+    const branchResponse = {
+      id: branch.branchId,
+      userId: branch.branchId,
+      name: branch.name,
+      role: 'Branch',
+      code: branch.code,
+      manager: branch.manager,
+      companyId: branch.companyId,
+    };
+
+    return { user: branchResponse, token };
   }
 }

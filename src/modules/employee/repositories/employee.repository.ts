@@ -39,4 +39,14 @@ export class EmployeeRepository {
     const result = await repo.delete({ employeeId });
     return (result.affected ?? 0) > 0;
   }
+
+  async findAllByBranchId(branchId: string): Promise<EmployeeModel[]> {
+    const repo = await this.getRepository();
+    return await repo.find({ where: { branchId }, order: { id: 'ASC' } });
+  }
+
+  async countEmployeesByBranchId(branchId: string): Promise<number> {
+    const repo = await this.getRepository();
+    return await repo.count({ where: { branchId } });
+  }
 }

@@ -18,6 +18,15 @@ export class BranchRepository {
     return await repo.findOne({ where: { branchId } });
   }
 
+  async findByBranchIdOrCode(identifier: string): Promise<BranchModel | null> {
+    const repo = await this.getRepository();
+    let branch = await repo.findOne({ where: { branchId: identifier } });
+    if (!branch) {
+      branch = await repo.findOne({ where: { code: identifier } });
+    }
+    return branch;
+  }
+
   async findByCodeAndCompanyId(code: string, companyId: string): Promise<BranchModel | null> {
     const repo = await this.getRepository();
     return await repo.findOne({ where: { code, companyId } });

@@ -29,6 +29,9 @@ export class BranchModel {
   @Column({ type: 'varchar' })
   companyId!: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  password?: string;
+
   @CreateDateColumn()
   createdAt!: Date;
 

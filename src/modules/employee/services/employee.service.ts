@@ -86,8 +86,10 @@ export class EmployeeService {
     if (!employee || employee.companyId !== companyId) {
       throw new Error('Employee not found.');
     }
-    employee.status = 'Inactive';
-    await this.employeeRepository.createEmployee(employee);
-    return true;
+    return await this.employeeRepository.deleteByEmployeeId(employeeId);
+  }
+
+  async getEmployeesByBranch(branchId: string): Promise<EmployeeModel[]> {
+    return await this.employeeRepository.findAllByBranchId(branchId);
   }
 }

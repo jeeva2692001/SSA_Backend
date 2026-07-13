@@ -1,5 +1,6 @@
 import { BranchRepository } from '../repositories/branch.repository';
 import { BranchModel } from '../models/branch.model';
+import bcrypt from 'bcryptjs';
 
 export class BranchService {
   private branchRepository: BranchRepository;
@@ -9,7 +10,9 @@ export class BranchService {
   }
 
   async getBranches(companyId: string): Promise<BranchModel[]> {
-    return await this.branchRepository.findAllByCompanyId(companyId);
+    const branches = await this.branchRepository.findAllByCompanyId(companyId);
+    branches.forEach(b => delete b.password);
+    return branches;
   }
 
   async addBranch(companyId: string, branchData: Partial<BranchModel>): Promise<BranchModel> {
@@ -30,7 +33,15 @@ export class BranchService {
     branchData.branchId = branchId;
     branchData.companyId = companyId;
 
-    return await this.branchRepository.createBranch(branchData);
+    if (branchData.password) {
+      branchData.password = await bcrypt.hash(branchData.password, 10);
+    } else {
+      branchData.password = await bcrypt.hash('Branch@123', 10);
+    }
+
+    const savedBranch = await this.branchRepository.createBranch(branchData);
+    delete savedBranch.password;
+    return savedBranch;
   }
 
   async updateBranch(branchId: string, companyId: string, branchData: Partial<BranchModel>): Promise<BranchModel> {
@@ -44,6 +55,9 @@ export class BranchService {
     if (branchData.address) branch.address = branchData.address;
     if (branchData.phone) branch.phone = branchData.phone;
     if (branchData.status) branch.status = branchData.status;
+    if (branchData.password) {
+      branch.password = await bcrypt.hash(branchData.password, 10);
+    }
 
     if (branchData.code) {
       const existing = await this.branchRepository.findByCodeAndCompanyId(branchData.code, companyId);
@@ -53,7 +67,9 @@ export class BranchService {
       branch.code = branchData.code;
     }
 
-    return await this.branchRepository.createBranch(branch);
+    const savedBranch = await this.branchRepository.createBranch(branch);
+    delete savedBranch.password;
+    return savedBranch;
   }
 
   async deleteBranch(branchId: string, companyId: string): Promise<boolean> {
