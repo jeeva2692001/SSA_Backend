@@ -39,6 +39,9 @@ export class EmployeeController {
       }
 
       const body = await req.json();
+      if (user.role === 'Branch') {
+        body.branchId = user.branchId;
+      }
       const employee = await this.employeeService.addEmployee(companyId, body);
       return NextResponse.json(employee, { status: 201 });
     } catch (error: any) {
@@ -67,6 +70,18 @@ export class EmployeeController {
         );
       }
 
+      if (user.role === 'Branch') {
+        updateData.branchId = user.branchId;
+        const employees = await this.employeeService.getEmployeesByBranch(user.branchId);
+        const belongsToBranch = employees.some(emp => emp.employeeId === employeeId);
+        if (!belongsToBranch) {
+          return NextResponse.json(
+            { message: 'Unauthorized: Employee does not belong to your branch.' },
+            { status: 403 }
+          );
+        }
+      }
+
       const employee = await this.employeeService.updateEmployee(employeeId, companyId, updateData);
       return NextResponse.json(employee, { status: 200 });
     } catch (error: any) {
@@ -93,6 +108,17 @@ export class EmployeeController {
           { message: 'Employee ID (employeeId) is required for deletion.' },
           { status: 400 }
         );
+      }
+
+      if (user.role === 'Branch') {
+        const employees = await this.employeeService.getEmployeesByBranch(user.branchId);
+        const belongsToBranch = employees.some(emp => emp.employeeId === employeeId);
+        if (!belongsToBranch) {
+          return NextResponse.json(
+            { message: 'Unauthorized: Employee does not belong to your branch.' },
+            { status: 403 }
+          );
+        }
       }
 
       const deleted = await this.employeeService.deleteEmployee(employeeId, companyId);
