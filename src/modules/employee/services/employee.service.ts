@@ -1,11 +1,14 @@
 import { EmployeeRepository } from '../repositories/employee.repository';
 import { EmployeeModel } from '../models/employee.model';
+import { BranchRepository } from '../../branch/repositories/branch.repository';
 
 export class EmployeeService {
   private employeeRepository: EmployeeRepository;
+  private branchRepository: BranchRepository;
 
   constructor() {
     this.employeeRepository = new EmployeeRepository();
+    this.branchRepository = new BranchRepository();
   }
 
   async getEmployees(companyId: string): Promise<EmployeeModel[]> {
@@ -21,6 +24,14 @@ export class EmployeeService {
     const existing = await this.employeeRepository.findByEmailAndCompanyId(employeeData.email, companyId);
     if (existing) {
       throw new Error('Employee email is already registered.');
+    }
+
+    // Verify branch exists and belongs to company if provided
+    if (employeeData.branchId) {
+      const branch = await this.branchRepository.findByBranchId(employeeData.branchId);
+      if (!branch || branch.companyId !== companyId) {
+        throw new Error('Invalid branch specified.');
+      }
     }
 
     // Sequential EMP-XXX generation based on count
@@ -47,6 +58,18 @@ export class EmployeeService {
     if (employeeData.joiningDate) employee.joiningDate = employeeData.joiningDate;
     if (employeeData.status) employee.status = employeeData.status;
 
+    if (employeeData.branchId !== undefined) {
+      if (employeeData.branchId) {
+        const branch = await this.branchRepository.findByBranchId(employeeData.branchId);
+        if (!branch || branch.companyId !== companyId) {
+          throw new Error('Invalid branch specified.');
+        }
+        employee.branchId = employeeData.branchId;
+      } else {
+        employee.branchId = undefined; // clears branch mapping in DB
+      }
+    }
+
     if (employeeData.email) {
       const existing = await this.employeeRepository.findByEmailAndCompanyId(employeeData.email, companyId);
       if (existing && existing.employeeId !== employeeId) {
@@ -64,5 +87,9 @@ export class EmployeeService {
       throw new Error('Employee not found.');
     }
     return await this.employeeRepository.deleteByEmployeeId(employeeId);
+  }
+
+  async getEmployeesByBranch(branchId: string): Promise<EmployeeModel[]> {
+    return await this.employeeRepository.findAllByBranchId(branchId);
   }
 }

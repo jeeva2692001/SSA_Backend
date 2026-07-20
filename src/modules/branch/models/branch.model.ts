@@ -1,33 +1,27 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
-@Entity('employees')
-export class EmployeeModel {
+@Entity('branches')
+export class BranchModel {
   @PrimaryGeneratedColumn()
   id!: number;
 
   @Column({ type: 'varchar', unique: true })
-  employeeId!: string;
+  branchId!: string;
 
   @Column({ type: 'varchar' })
   name!: string;
 
   @Column({ type: 'varchar' })
-  email!: string;
+  code!: string;
+
+  @Column({ type: 'varchar' })
+  manager!: string;
+
+  @Column({ type: 'text' })
+  address!: string;
 
   @Column({ type: 'varchar' })
   phone!: string;
-
-  @Column({ type: 'varchar' })
-  department!: string;
-
-  @Column({ type: 'varchar' })
-  designation!: string;
-
-  @Column({ type: 'varchar', nullable: true })
-  manager?: string;
-
-  @Column({ type: 'varchar' })
-  joiningDate!: string;
 
   @Column({ type: 'varchar', default: 'Active' })
   status!: string;
@@ -36,7 +30,7 @@ export class EmployeeModel {
   companyId!: string;
 
   @Column({ type: 'varchar', nullable: true })
-  branchId?: string;
+  password?: string;
 
   @CreateDateColumn()
   createdAt!: Date;
