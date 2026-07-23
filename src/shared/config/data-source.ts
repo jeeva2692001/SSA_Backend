@@ -6,6 +6,12 @@ import { UserModel } from "../../modules/auth/models/user.model";
 import { CompanyModel } from "../../modules/company/models/company.model";
 import { EmployeeModel } from "../../modules/employee/models/employee.model";
 import { BranchModel } from "../../modules/branch/models/branch.model";
+import { ProjectCategoryModel } from "../../modules/lead/models/project-category.model";
+import { CategoryTemplateFieldModel } from "../../modules/lead/models/category-template-field.model";
+import { LeadModel } from "../../modules/lead/models/lead.model";
+import { LeadRequirementValueModel } from "../../modules/lead/models/lead-requirement-value.model";
+import { DeliverableTemplateModel } from "../../modules/lead/models/deliverable-template.model";
+import { LeadDeliverableModel } from "../../modules/lead/models/lead-deliverable.model";
 
 const globalRef = global as unknown as { AppDataSource: DataSource | undefined };
 
@@ -18,7 +24,19 @@ export const AppDataSource = globalRef.AppDataSource || new DataSource({
   database: envConfig.database.database,
   synchronize: true,
   logging: true,
-  entities: [TestModel, UserModel, CompanyModel, EmployeeModel, BranchModel],
+  entities: [
+    TestModel, 
+    UserModel, 
+    CompanyModel, 
+    EmployeeModel, 
+    BranchModel,
+    ProjectCategoryModel,
+    CategoryTemplateFieldModel,
+    LeadModel,
+    LeadRequirementValueModel,
+    DeliverableTemplateModel,
+    LeadDeliverableModel
+  ],
   migrations: [],
   subscribers: [],
 });
