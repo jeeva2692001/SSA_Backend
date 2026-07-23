@@ -41,9 +41,20 @@ export class CompanyRepository {
     return await repo.save(company);
   }
 
-  async countCompanies(): Promise<number> {
+  async getNextCompanyId(): Promise<string> {
     const repo = await this.getRepository();
-    return await repo.count();
+    const companies = await repo.find();
+    let maxNum = 0;
+    for (const c of companies) {
+      const match = c.companyId.match(/^COM-(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+    return `COM-${String(maxNum + 1).padStart(3, '0')}`;
   }
 
   async deleteByCompanyId(companyId: string): Promise<boolean> {

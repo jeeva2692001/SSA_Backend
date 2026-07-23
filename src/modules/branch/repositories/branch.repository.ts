@@ -38,9 +38,20 @@ export class BranchRepository {
     return await repo.save(branch);
   }
 
-  async countBranchesByCompanyId(companyId: string): Promise<number> {
+  async getNextBranchId(): Promise<string> {
     const repo = await this.getRepository();
-    return await repo.count({ where: { companyId } });
+    const branches = await repo.find();
+    let maxNum = 0;
+    for (const b of branches) {
+      const match = b.branchId.match(/^BRN-(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+    return `BRN-${String(maxNum + 1).padStart(3, '0')}`;
   }
 
   async deleteByBranchId(branchId: string, companyId: string): Promise<boolean> {

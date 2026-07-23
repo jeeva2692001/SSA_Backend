@@ -34,9 +34,8 @@ export class EmployeeService {
       }
     }
 
-    // Sequential EMP-XXX generation based on count
-    const count = await this.employeeRepository.countEmployeesByCompanyId(companyId);
-    const employeeId = `EMP-${String(count + 1).padStart(3, '0')}`;
+    // Sequential EMP-XXX generation based on max suffix
+    const employeeId = await this.employeeRepository.getNextEmployeeId();
 
     employeeData.employeeId = employeeId;
     employeeData.companyId = companyId;

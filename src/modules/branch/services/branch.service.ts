@@ -26,9 +26,8 @@ export class BranchService {
       throw new Error('Branch code is already registered for this company.');
     }
 
-    // Sequential BRN-XXX generation based on count
-    const count = await this.branchRepository.countBranchesByCompanyId(companyId);
-    const branchId = `BRN-${String(count + 1).padStart(3, '0')}`;
+    // Sequential BRN-XXX generation based on max suffix
+    const branchId = await this.branchRepository.getNextBranchId();
 
     branchData.branchId = branchId;
     branchData.companyId = companyId;

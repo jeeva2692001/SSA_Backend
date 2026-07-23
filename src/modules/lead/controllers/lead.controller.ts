@@ -121,4 +121,20 @@ export class LeadController {
       return NextResponse.json({ success: false, message: err.message }, { status });
     }
   }
+
+  async deleteLead(req: NextRequest, id: number, user: any) {
+    try {
+      const userContext = {
+        companyId: user.companyId || '',
+        branchId: user.branchId || null,
+        role: user.role
+      };
+
+      await this.leadService.deleteLead(id, userContext);
+      return NextResponse.json({ success: true, message: 'Lead deleted successfully.' });
+    } catch (err: any) {
+      const status = err.message.includes('Unauthorized') ? 403 : err.message.includes('not found') ? 404 : 500;
+      return NextResponse.json({ success: false, message: err.message }, { status });
+    }
+  }
 }

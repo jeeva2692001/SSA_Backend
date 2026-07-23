@@ -47,17 +47,19 @@ export class LeadService {
       throw new Error(`Category with ID ${leadData.categoryId} not found.`);
     }
 
-    // Validate category-specific required fields
     const templateFields = await this.leadRepository.findTemplateFieldsByCategoryId(leadData.categoryId);
-    for (const field of templateFields) {
-      if (field.isRequired && (requirementValues[field.fieldKey] === undefined || requirementValues[field.fieldKey] === null || requirementValues[field.fieldKey] === '')) {
-        throw new Error(`Field '${field.fieldName}' is required for ${category.name} projects.`);
+
+    // Validate category-specific required fields (skip if saving as Draft)
+    if (leadData.status !== 'Draft') {
+      for (const field of templateFields) {
+        if (field.isRequired && (requirementValues[field.fieldKey] === undefined || requirementValues[field.fieldKey] === null || requirementValues[field.fieldKey] === '')) {
+          throw new Error(`Field '${field.fieldName}' is required for ${category.name} projects.`);
+        }
       }
     }
 
     // Generate unique sequential leadId
-    const count = await this.leadRepository.countLeads();
-    const leadId = `LEAD-${String(count + 1).padStart(3, '0')}`;
+    const leadId = await this.leadRepository.getNextLeadId();
 
     leadData.leadId = leadId;
     leadData.companyId = scopedCompanyId;
@@ -261,5 +263,24 @@ export class LeadService {
     }
 
     return await this.leadRepository.findDeliverablesByLeadId(leadId);
+  }
+
+  async deleteLead(id: number, userContext: { companyId: string; branchId: string | null; role: string }): Promise<void> {
+    const lead = await this.leadRepository.findLeadById(id);
+    if (!lead) {
+      throw new Error('Lead not found.');
+    }
+
+    // Verify permissions
+    if (userContext.role !== 'Super Admin' && userContext.role !== 'Employee') {
+      if (lead.companyId !== userContext.companyId) {
+        throw new Error('Unauthorized to delete this lead.');
+      }
+      if (userContext.role === 'Branch' && userContext.branchId && lead.branchId !== userContext.branchId) {
+        throw new Error('Unauthorized to delete this lead.');
+      }
+    }
+
+    await this.leadRepository.deleteLead(id);
   }
 }

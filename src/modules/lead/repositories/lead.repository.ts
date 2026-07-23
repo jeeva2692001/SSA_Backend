@@ -59,9 +59,20 @@ export class LeadRepository {
   }
 
   // Leads
-  async countLeads(): Promise<number> {
+  async getNextLeadId(): Promise<string> {
     const repo = await this.getLeadRepo();
-    return await repo.count();
+    const leads = await repo.find();
+    let maxNum = 0;
+    for (const l of leads) {
+      const match = l.leadId.match(/^LEAD-(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+    return `LEAD-${String(maxNum + 1).padStart(3, '0')}`;
   }
 
   async createLead(leadData: Partial<LeadModel>): Promise<LeadModel> {
@@ -70,9 +81,14 @@ export class LeadRepository {
     return await repo.save(lead);
   }
 
+  async deleteLead(id: number): Promise<void> {
+    const repo = await this.getLeadRepo();
+    await repo.delete(id);
+  }
+
   async findLeadById(id: number): Promise<LeadModel | null> {
     const repo = await this.getLeadRepo();
-    return await repo.findOne({ 
+    return await repo.findOne({
       where: { id },
       relations: { category: true }
     });
@@ -80,7 +96,7 @@ export class LeadRepository {
 
   async findLeadByLeadId(leadId: string): Promise<LeadModel | null> {
     const repo = await this.getLeadRepo();
-    return await repo.findOne({ 
+    return await repo.findOne({
       where: { leadId },
       relations: { category: true }
     });
@@ -112,14 +128,28 @@ export class LeadRepository {
     const repo = await this.getValueRepo();
     const results: LeadRequirementValueModel[] = [];
 
+    const isValueEmpty = (val: any): boolean => {
+      if (val === null || val === undefined) return true;
+      if (typeof val === 'number' && Number.isNaN(val)) return true;
+      if (typeof val === 'string' && val.trim() === '') return true;
+      if (Array.isArray(val) && val.length === 0) return true;
+      return false;
+    };
+
     for (const [fieldKey, val] of Object.entries(values)) {
       let existing = await repo.findOne({ where: { leadId, fieldKey } });
-      if (existing) {
-        existing.value = val;
-        results.push(await repo.save(existing));
+      if (isValueEmpty(val)) {
+        if (existing) {
+          await repo.remove(existing);
+        }
       } else {
-        const newVal = repo.create({ leadId, fieldKey, value: val });
-        results.push(await repo.save(newVal));
+        if (existing) {
+          existing.value = val;
+          results.push(await repo.save(existing));
+        } else {
+          const newVal = repo.create({ leadId, fieldKey, value: val });
+          results.push(await repo.save(newVal));
+        }
       }
     }
     return results;

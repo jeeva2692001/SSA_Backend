@@ -29,9 +29,20 @@ export class EmployeeRepository {
     return await repo.save(employee);
   }
 
-  async countEmployeesByCompanyId(companyId: string): Promise<number> {
+  async getNextEmployeeId(): Promise<string> {
     const repo = await this.getRepository();
-    return await repo.count({ where: { companyId } });
+    const employees = await repo.find();
+    let maxNum = 0;
+    for (const emp of employees) {
+      const match = emp.employeeId.match(/^EMP-(\d+)$/);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (num > maxNum) {
+          maxNum = num;
+        }
+      }
+    }
+    return `EMP-${String(maxNum + 1).padStart(3, '0')}`;
   }
 
   async deleteByEmployeeId(employeeId: string): Promise<boolean> {

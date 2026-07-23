@@ -27,3 +27,15 @@ export async function PUT(
     return await leadController.updateLead(req, leadId, user);
   });
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const resolvedParams = await params;
+  const leadId = parseInt(resolvedParams.id, 10);
+
+  return await authMiddleware(req, async (user: any) => {
+    return await leadController.deleteLead(req, leadId, user);
+  });
+}

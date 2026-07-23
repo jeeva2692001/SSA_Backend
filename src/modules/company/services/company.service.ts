@@ -29,12 +29,11 @@ export class CompanyService {
     }
 
     // Generate unique companyId (COM-00X)
-    const count = await this.companyRepository.countCompanies();
-    const companyId = `COM-${String(count + 1).padStart(3, '0')}`;
-    
+    const companyId = await this.companyRepository.getNextCompanyId();
+
     // Hash password before saving
     const hashedPassword = await bcrypt.hash(companyData.password, 10);
-    
+
     companyData.companyId = companyId;
     companyData.password = hashedPassword;
     return await this.companyRepository.createCompany(companyData);
