@@ -210,7 +210,7 @@ export class LeadService {
       // Design preferences
       'styleReferencesInspiration', 'sustainabilityGoals', 'vaastuOrientationRequirements', 'materialPreferences',
       // Assignment & status
-      'assignedEmployee', 'branch', 'branchId', 'remarks', 'status',
+      'assignedEmployee', 'branch', 'branchId', 'remarks', 'status', 'attachments',
     ];
 
     for (const key of mutableFields) {
