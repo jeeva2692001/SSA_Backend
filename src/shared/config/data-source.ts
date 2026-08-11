@@ -26,11 +26,16 @@ const globalRef = global as unknown as { AppDataSource: DataSource | undefined }
 
 export const AppDataSource = globalRef.AppDataSource || new DataSource({
   type: "postgres",
-  host: envConfig.database.host,
-  port: envConfig.database.port,
-  username: envConfig.database.username,
-  password: envConfig.database.password,
-  database: envConfig.database.database,
+  ...(envConfig.database.url
+    ? { url: envConfig.database.url }
+    : {
+        host: envConfig.database.host,
+        port: envConfig.database.port,
+        username: envConfig.database.username,
+        password: envConfig.database.password,
+        database: envConfig.database.database,
+      }),
+  ssl: envConfig.database.ssl,
   synchronize: true,
   logging: true,
   entities: [
