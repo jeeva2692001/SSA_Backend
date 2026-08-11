@@ -535,6 +535,13 @@ async function main() {
     
     // Seed templates, fields, and deliverables
     await seedLeadTemplates(ds);
+
+    // Seed Disciplines & Drawing Types Master
+    const { ProjectService } = require('../../modules/project/services/project.service');
+    const projectService = new ProjectService();
+    await projectService.seedMasterData();
+    console.log('[DB-Init] Seeding Disciplines & Drawing Types Master complete.');
+
     console.log('[DB-Init] Database initialization complete.');
     
     process.exit(0);

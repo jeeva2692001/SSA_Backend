@@ -12,6 +12,15 @@ import { LeadModel } from "../../modules/lead/models/lead.model";
 import { LeadRequirementValueModel } from "../../modules/lead/models/lead-requirement-value.model";
 import { DeliverableTemplateModel } from "../../modules/lead/models/deliverable-template.model";
 import { LeadDeliverableModel } from "../../modules/lead/models/lead-deliverable.model";
+import {
+  ProjectModel,
+  DisciplineModel,
+  ProjectDisciplineModel,
+  DrawingTypeModel,
+  DrawingModel,
+  DrawingRevisionModel,
+  DrawingFileModel
+} from "../../modules/project";
 
 const globalRef = global as unknown as { AppDataSource: DataSource | undefined };
 
@@ -35,7 +44,14 @@ export const AppDataSource = globalRef.AppDataSource || new DataSource({
     LeadModel,
     LeadRequirementValueModel,
     DeliverableTemplateModel,
-    LeadDeliverableModel
+    LeadDeliverableModel,
+    ProjectModel,
+    DisciplineModel,
+    ProjectDisciplineModel,
+    DrawingTypeModel,
+    DrawingModel,
+    DrawingRevisionModel,
+    DrawingFileModel
   ],
   migrations: [],
   subscribers: [],
