@@ -65,6 +65,10 @@ export class ProjectRepository {
   }
 
   // --- DISCIPLINES ---
+  getDisciplineRepository(): Repository<DisciplineModel> {
+    return this.disciplineRepo();
+  }
+
   async findAllDisciplines(): Promise<DisciplineModel[]> {
     return await this.disciplineRepo().find({ order: { sequenceOrder: 'ASC' } });
   }

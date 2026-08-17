@@ -6,6 +6,7 @@ import { ProjectCategoryModel } from '../../modules/lead/models/project-category
 import { CategoryTemplateFieldModel } from '../../modules/lead/models/category-template-field.model';
 import { DeliverableTemplateModel } from '../../modules/lead/models/deliverable-template.model';
 import { LeadDeliverableModel } from '../../modules/lead/models/lead-deliverable.model';
+import { ClientModel } from '../../modules/client/models/client.model';
 import { IsNull } from 'typeorm';
 
 async function seedLeadTemplates(ds: any) {

@@ -226,6 +226,33 @@ export class ProjectService {
     }
   }
 
+  // --- DISCIPLINE MASTER METHODS ---
+  async getAllDisciplines() {
+    await this.seedMasterData();
+    return await this.projectRepo.findAllDisciplines();
+  }
+
+  async createDisciplineMaster(input: { code: string; name: string; description?: string }) {
+    await this.seedMasterData();
+    const code = input.code.toUpperCase().trim();
+    const repo = this.projectRepo.getDisciplineRepository();
+    const existing = await repo.findOne({ where: { code } });
+    if (existing) {
+      existing.name = input.name || existing.name;
+      if (input.description) existing.description = input.description;
+      return await repo.save(existing);
+    }
+    const count = await repo.count();
+    const newDiscipline = repo.create({
+      code,
+      name: input.name,
+      description: input.description || `${input.name} drawings and documentation`,
+      sequenceOrder: count + 1,
+      status: 'Active'
+    });
+    return await repo.save(newDiscipline);
+  }
+
   // --- QUERY METHODS ---
   async getAllProjects() {
     await this.seedMasterData();

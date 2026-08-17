@@ -303,7 +303,7 @@ export class LeadService {
     // Update properties dynamically (excluding read-only fields)
     const mutableFields = [
       // Lead / client identification
-      'clientName', 'leadTitle', 'company', 'contactPerson', 'email', 'mobile',
+      'clientId', 'clientName', 'leadTitle', 'company', 'contactPerson', 'email', 'mobile',
       'organisation', 'leadSource', 'decisionMakers', 'priorProjectsWithSSA',
       // Project classification
       'projectType', 'projectSubType', 'leadCategory', 'subType', 'buildType',

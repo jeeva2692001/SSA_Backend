@@ -12,6 +12,7 @@ import { LeadModel } from "../../modules/lead/models/lead.model";
 import { LeadRequirementValueModel } from "../../modules/lead/models/lead-requirement-value.model";
 import { DeliverableTemplateModel } from "../../modules/lead/models/deliverable-template.model";
 import { LeadDeliverableModel } from "../../modules/lead/models/lead-deliverable.model";
+import { ClientModel } from "../../modules/client/models/client.model";
 import {
   ProjectModel,
   DisciplineModel,
@@ -44,6 +45,7 @@ export const AppDataSource = globalRef.AppDataSource || new DataSource({
     CompanyModel, 
     EmployeeModel, 
     BranchModel,
+    ClientModel,
     ProjectCategoryModel,
     CategoryTemplateFieldModel,
     LeadModel,
@@ -61,6 +63,23 @@ export const AppDataSource = globalRef.AppDataSource || new DataSource({
   migrations: [],
   subscribers: [],
 });
+
+// Safe getRepository wrapper to handle Next.js / Turbopack HMR class identity changes
+const originalGetRepository = AppDataSource.getRepository.bind(AppDataSource);
+(AppDataSource as any).getRepository = function <Entity>(target: any) {
+  try {
+    return originalGetRepository(target);
+  } catch (err: any) {
+    const targetName = typeof target === 'function' ? target.name : String(target);
+    const meta = AppDataSource.entityMetadatas.find(
+      m => m.name === targetName || m.targetName === targetName || (typeof m.target === 'function' && m.target.name === targetName)
+    );
+    if (meta) {
+      return originalGetRepository(meta.target as any);
+    }
+    throw err;
+  }
+};
 
 if (process.env.NODE_ENV !== "production") {
   globalRef.AppDataSource = AppDataSource;

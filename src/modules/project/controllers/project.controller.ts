@@ -41,6 +41,30 @@ export class ProjectController {
     }
   }
 
+  async getAllDisciplines(req: NextRequest, user: any) {
+    try {
+      const disciplines = await this.projectService.getAllDisciplines();
+      return NextResponse.json({ success: true, data: disciplines });
+    } catch (err: any) {
+      console.error('[ProjectController] getAllDisciplines error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  async createDiscipline(req: NextRequest, user: any) {
+    try {
+      const body = await req.json();
+      if (!body.code || !body.name) {
+        return NextResponse.json({ success: false, message: 'Discipline Code and Name are required.' }, { status: 400 });
+      }
+      const created = await this.projectService.createDisciplineMaster(body);
+      return NextResponse.json({ success: true, data: created });
+    } catch (err: any) {
+      console.error('[ProjectController] createDiscipline error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
   async addProjectDiscipline(req: NextRequest, projectId: string, user: any) {
     try {
       const body = await req.json();
