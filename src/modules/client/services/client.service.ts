@@ -92,6 +92,21 @@ export class ClientService {
     if (!data.clientName || !data.clientName.trim()) {
       throw new Error('Client Name is required.');
     }
+    if (!data.mobile || !data.mobile.trim()) {
+      throw new Error('Mobile number is required.');
+    }
+    if (!data.email || !data.email.trim()) {
+      throw new Error('Email address is required.');
+    }
+    if (!data.address || !data.address.trim()) {
+      throw new Error('Address is required.');
+    }
+    if (!data.city || !data.city.trim()) {
+      throw new Error('City is required.');
+    }
+    if (!data.state || !data.state.trim()) {
+      throw new Error('State is required.');
+    }
 
     const scopedCompanyId = data.companyId || userContext.companyId;
     const scopedBranchId = data.branchId !== undefined ? data.branchId : userContext.branchId;

@@ -53,6 +53,9 @@ export class ClientModel {
   @Column({ type: 'varchar', nullable: true })
   panNo?: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  aadharNo?: string;
+
   @Column({ type: 'varchar', default: 'Corporate' })
   clientType!: string; // 'Corporate' | 'Individual Developer' | 'Government' | 'Institutional' | 'Commercial'
 

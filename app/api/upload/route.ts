@@ -34,8 +34,8 @@ export async function POST(req: NextRequest) {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
-      const isImage = file.type.startsWith('image/') || /\.(png|jpg|jpeg|webp|gif|svg)$/i.test(file.name);
-      const resourceType = isImage ? 'image' : 'raw';
+      const isImageOrPdf = file.type.startsWith('image/') || file.type === 'application/pdf' || /\.(png|jpg|jpeg|webp|gif|svg|pdf)$/i.test(file.name);
+      const resourceType = isImageOrPdf ? 'auto' : 'raw';
 
       const cloudinaryInstance = getCloudinary();
 
