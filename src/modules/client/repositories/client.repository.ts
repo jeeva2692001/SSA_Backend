@@ -62,6 +62,25 @@ export class ClientRepository {
     return await repo.findOne({ where: { clientCode } });
   }
 
+  async findByMobile(mobile: string, companyId?: string): Promise<ClientModel | null> {
+    const repo = await this.getClientRepo();
+    const cleanMobile = mobile.replace(/[\s\-+]/g, '');
+    const qb = repo.createQueryBuilder('client');
+    if (companyId) {
+      qb.where('client.companyId = :companyId', { companyId });
+      qb.andWhere(
+        '(client.mobile = :mobile OR regexp_replace(COALESCE(client.mobile, \'\'), \'[^0-9]\', \'\', \'g\') = :cleanMobile)',
+        { mobile: mobile.trim(), cleanMobile }
+      );
+    } else {
+      qb.where(
+        '(client.mobile = :mobile OR regexp_replace(COALESCE(client.mobile, \'\'), \'[^0-9]\', \'\', \'g\') = :cleanMobile)',
+        { mobile: mobile.trim(), cleanMobile }
+      );
+    }
+    return await qb.getOne();
+  }
+
   async countClients(companyId?: string): Promise<number> {
     const repo = await this.getClientRepo();
     if (companyId) {

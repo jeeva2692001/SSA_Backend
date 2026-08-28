@@ -64,22 +64,50 @@ export const AppDataSource = globalRef.AppDataSource || new DataSource({
   subscribers: [],
 });
 
-// Safe getRepository wrapper to handle Next.js / Turbopack HMR class identity changes
-const originalGetRepository = AppDataSource.getRepository.bind(AppDataSource);
-(AppDataSource as any).getRepository = function <Entity>(target: any) {
-  try {
-    return originalGetRepository(target);
-  } catch (err: any) {
+// Safe getMetadata & getRepository wrapper to handle Next.js / Turbopack HMR class identity changes
+if (!(AppDataSource as any).__safeGetRepositoryPatched) {
+  const origFindMetadata = (AppDataSource as any).findMetadata?.bind(AppDataSource);
+  (AppDataSource as any).findMetadata = function (target: any) {
+    const found = origFindMetadata ? origFindMetadata(target) : undefined;
+    if (found) return found;
     const targetName = typeof target === 'function' ? target.name : String(target);
-    const meta = AppDataSource.entityMetadatas.find(
-      m => m.name === targetName || m.targetName === targetName || (typeof m.target === 'function' && m.target.name === targetName)
+    return AppDataSource.entityMetadatas.find(
+      m => m.name === targetName || m.targetName === targetName || m.tableName === targetName || (typeof m.target === 'function' && m.target.name === targetName)
     );
-    if (meta) {
-      return originalGetRepository(meta.target as any);
+  };
+
+  const origHasMetadata = AppDataSource.hasMetadata.bind(AppDataSource);
+  (AppDataSource as any).hasMetadata = function (target: any) {
+    if (origHasMetadata(target)) return true;
+    return !!(AppDataSource as any).findMetadata(target);
+  };
+
+  const origGetMetadata = AppDataSource.getMetadata.bind(AppDataSource);
+  (AppDataSource as any).getMetadata = function (target: any) {
+    try {
+      return origGetMetadata(target);
+    } catch {
+      const meta = (AppDataSource as any).findMetadata(target);
+      if (meta) return meta;
+      throw new Error(`No metadata for "${typeof target === 'function' ? target.name : target}" was found.`);
     }
-    throw err;
-  }
-};
+  };
+
+  const origGetRepository = AppDataSource.getRepository.bind(AppDataSource);
+  (AppDataSource as any).getRepository = function <Entity>(target: any) {
+    try {
+      return origGetRepository(target);
+    } catch (err: any) {
+      const meta = (AppDataSource as any).findMetadata(target);
+      if (meta) {
+        return origGetRepository(meta.target as any);
+      }
+      throw err;
+    }
+  };
+
+  (AppDataSource as any).__safeGetRepositoryPatched = true;
+}
 
 if (process.env.NODE_ENV !== "production") {
   globalRef.AppDataSource = AppDataSource;
