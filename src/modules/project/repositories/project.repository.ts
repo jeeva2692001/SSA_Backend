@@ -79,17 +79,32 @@ export class ProjectRepository {
     if (existing.length > 0) return existing;
 
     const defaultDisciplines = [
-      { code: 'AR', name: 'Architecture', sequenceOrder: 1, description: 'Base architectural plans, sections, elevations, schedules' },
-      { code: 'ST', name: 'Structural', sequenceOrder: 2, description: 'Columns, footings, tie beams, slab rebar, BBS' },
-      { code: 'EL', name: 'Electrical (MEP)', sequenceOrder: 3, description: 'SLD, power, lighting, panel schedules, cable trays, DG/UPS' },
-      { code: 'PL', name: 'Plumbing (MEP)', sequenceOrder: 4, description: 'Water supply, drainage, storm water, pump room, STP/WTP' },
-      { code: 'FF', name: 'Fire Fighting', sequenceOrder: 5, description: 'Sprinklers, hydrants, hose reels, fire pumps, static storage' },
-      { code: 'HV', name: 'HVAC', sequenceOrder: 6, description: 'Chillers/AHUs, ducts, chilled water, VRF, OT ventilation' },
-      { code: 'MG', name: 'Medical Gas', sequenceOrder: 7, description: 'Manifold room, pipeline routing, bed outlets, zone valves' },
-      { code: 'LV', name: 'ELV / Low Voltage', sequenceOrder: 8, description: 'Structured cabling, CCTV, access control, BMS, nurse call' },
-      { code: 'VT', name: 'Vertical Transport', sequenceOrder: 9, description: 'Lift layout, shaft details, machine room, load calcs' },
-      { code: 'SP', name: 'Other Special Services', sequenceOrder: 10, description: 'Kitchen, laundry, pneumatic tube, solar PV, landscape' },
-      { code: 'IN', name: 'Interior', sequenceOrder: 11, description: 'Furniture, flooring, RCP ceilings, millwork, FF&E' },
+      { code: 'PI', name: '1.PROJECT INFORMATION', sequenceOrder: 1, description: 'Project brief, client details, charter, key contacts, milestones' },
+      { code: 'SI', name: '2.SITE INFORMATION', sequenceOrder: 2, description: 'Survey drawings, soil test reports, site photos, boundary & contour data' },
+      { code: 'AR', name: '3.ARCHITECTURAL DRAWINGS', sequenceOrder: 3, description: 'Base architectural plans, sections, elevations, schedules, scheme & working drawings' },
+      { code: 'IN', name: '4.INTERIOR', sequenceOrder: 4, description: 'Furniture layouts, flooring, RCP ceilings, millwork, FF&E schedules' },
+      { code: 'ST', name: '5.STRUCTURAL', sequenceOrder: 5, description: 'Columns, footings, tie beams, slab rebar, BBS, structural notes' },
+      { code: 'MEP', name: '6.MEP & OTHER SERVICE DRAWINGS', sequenceOrder: 6, description: 'Combined MEP & Services (Electrical, Plumbing, Fire Fighting, HVAC, ELV, Gas, Transport)' },
+      { code: 'BQ', name: '7.BOQ & ESTIMATION', sequenceOrder: 7, description: 'Bill of quantities, cost estimates, rate analysis, material quantity takeoffs' },
+      { code: 'TD', name: '8.TENDER DOCUMENTS', sequenceOrder: 8, description: 'NIT, tender drawings, conditions of contract, specifications, addenda' },
+      { code: 'CR', name: '9.CONSTRUCTION REPORTS', sequenceOrder: 9, description: 'Daily Progress Reports (DPR), weekly/monthly reports, QA/QC checklists, site logs' },
+      { code: 'SA', name: '10.SUBMITTAL APPROVALS', sequenceOrder: 10, description: 'Material submittals, technical data sheets, sample approvals, shop drawings' },
+      { code: 'TQ', name: '11.TECHINICAL QUERIES', sequenceOrder: 11, description: 'Technical Queries (RFIs), consultant clarifications & site instructions' },
+      { code: 'MC', name: '12.MEETING CORRESPONDANCE', sequenceOrder: 12, description: 'Minutes of Meetings (MOM), client/consultant letters, official correspondence' },
+      { code: 'PS', name: '13.PROJECT SCHEDULE', sequenceOrder: 13, description: 'Master baseline schedule, look-ahead plans, milestone tracking, delay analysis' },
+      { code: 'CA', name: '14.COST ACCOUNTS', sequenceOrder: 14, description: 'RA bills, contractor payment certificates, variations, extra item claims, cashflows' },
+      { code: 'AP', name: '15.STATUTORY APPROVALS', sequenceOrder: 15, description: 'Building sanctions, fire NOC, environmental clearance, local authority permits' },
+      { code: 'TC', name: '16.TESTING & COMMISIONING', sequenceOrder: 16, description: 'Pre-commissioning checklists, hydro testing, MEP test reports, snag lists' },
+      { code: 'HO', name: '17.HANDOVER', sequenceOrder: 17, description: 'As-built drawings, O&M manuals, warranty certificates, completion certificates' },
+      // Sub-Disciplines under MEP
+      { code: 'EL', name: 'Electrical (MEP)', sequenceOrder: 18, description: 'SLD, power, lighting, panel schedules, cable trays, DG/UPS' },
+      { code: 'PL', name: 'Plumbing (MEP)', sequenceOrder: 19, description: 'Water supply, drainage, storm water, pump room, STP/WTP' },
+      { code: 'FF', name: 'Fire Fighting (MEP)', sequenceOrder: 20, description: 'Sprinklers, hydrants, hose reels, fire pumps, static storage' },
+      { code: 'HV', name: 'HVAC (MEP)', sequenceOrder: 21, description: 'Chillers/AHUs, ducts, chilled water, VRF, OT ventilation' },
+      { code: 'MG', name: 'Medical Gas (MEP)', sequenceOrder: 22, description: 'Manifold room, pipeline routing, bed outlets, zone valves' },
+      { code: 'LV', name: 'ELV / Low Voltage (MEP)', sequenceOrder: 23, description: 'Structured cabling, CCTV, access control, BMS, nurse call' },
+      { code: 'VT', name: 'Vertical Transport (MEP)', sequenceOrder: 24, description: 'Lift layout, shaft details, machine room, load calcs' },
+      { code: 'SP', name: 'Other Special Services (MEP)', sequenceOrder: 25, description: 'Kitchen, laundry, pneumatic tube, solar PV, landscape' },
     ];
 
     const entities = repo.create(defaultDisciplines);
