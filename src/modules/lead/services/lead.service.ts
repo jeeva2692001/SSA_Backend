@@ -300,6 +300,11 @@ export class LeadService {
       }
     }
 
+    // Disallow converting a Draft lead directly to Won / Converted
+    if (lead.status === 'Draft' && (leadData.status === 'Converted' || leadData.status === 'Won')) {
+      throw new Error('Draft leads cannot be converted to an active project. Please complete and submit the lead details first.');
+    }
+
     // Update properties dynamically (excluding read-only fields)
     const mutableFields = [
       // Lead / client identification
