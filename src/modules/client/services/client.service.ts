@@ -149,8 +149,8 @@ export class ClientService {
       throw new Error('Remarks cannot exceed 250 characters.');
     }
 
-    const scopedCompanyId = data.companyId || userContext.companyId;
-    const scopedBranchId = data.branchId !== undefined ? data.branchId : userContext.branchId;
+    const scopedCompanyId = data.companyId || userContext.companyId || 'CMP-2026-001';
+    const scopedBranchId = data.branchId !== undefined ? data.branchId : (userContext.branchId || null);
 
     // Check if client with this mobile number already exists
     const cleanMobile = data.mobile.trim();
@@ -159,13 +159,15 @@ export class ClientService {
       throw new Error(`A client with mobile number "${cleanMobile}" already exists in the system (${existingClientWithMobile.clientName} - ${existingClientWithMobile.clientCode || 'Existing'}).`);
     }
 
-    // Generate clientCode if not provided (e.g. CL-2026-001)
+    // Generate clientCode if not provided (e.g. CL-2026-005)
     let clientCode = data.clientCode;
     if (!clientCode) {
-      const total = await this.clientRepo.countClients(scopedCompanyId);
-      const year = new Date().getFullYear();
-      const seq = String(total + 1).padStart(3, '0');
-      clientCode = `CL-${year}-${seq}`;
+      clientCode = await this.clientRepo.getNextClientCode();
+    } else {
+      const existing = await this.clientRepo.findByCode(clientCode);
+      if (existing) {
+        clientCode = await this.clientRepo.getNextClientCode();
+      }
     }
 
     const newClient = await this.clientRepo.create({
