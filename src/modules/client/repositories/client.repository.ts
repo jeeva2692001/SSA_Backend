@@ -61,6 +61,7 @@ export class ClientRepository {
     const repo = await this.getClientRepo();
     return await repo.findOne({ where: { clientCode } });
   }
+
   async findByMobile(mobile: string, companyId?: string): Promise<ClientModel | null> {
     const repo = await this.getClientRepo();
     const cleanMobile = mobile.replace(/[\s\-+]/g, '');

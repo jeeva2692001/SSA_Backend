@@ -5,8 +5,8 @@
   "scripts": {
     "dev": "npm run db:init && next dev",
     "build": "next build",
-    "start": "next start -p ${PORT:-3000}",
-    "start:prod": "next start -p ${PORT:-3000}",
+    "start": "npm run db:init && next dev",
+    "start:prod": "next start",
     "lint": "eslint",
     "db:init": "npx tsx src/shared/config/db-init.ts"
   },

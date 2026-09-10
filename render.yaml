@@ -16,12 +16,6 @@ services:
         generateValue: true
       - key: JWT_EXPIRY
         value: 1d
-      - key: CLOUDINARY_CLOUD_NAME
-        value: sbsymyo4
-      - key: CLOUDINARY_API_KEY
-        value: 421495547388578
-      - key: CLOUDINARY_API_SECRET
-        value: UMYh-b3HhK521tbFiwtDz1diR8k
 
 databases:
   - name: ssa-db
