@@ -8,7 +8,8 @@
     "start": "npm run db:init && next dev",
     "start:prod": "next start",
     "lint": "eslint",
-    "db:init": "npx tsx src/shared/config/db-init.ts"
+    "db:init": "npx tsx src/shared/config/db-init.ts",
+    "db:export": "node scripts/export_db.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
