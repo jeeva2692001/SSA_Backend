@@ -141,6 +141,7 @@ export class CompanyService {
 
     companyData.companyId = companyId;
     companyData.password = hashedPassword;
+    companyData.isFirstLogin = true;
     return await this.companyRepository.createCompany(companyData);
   }
 

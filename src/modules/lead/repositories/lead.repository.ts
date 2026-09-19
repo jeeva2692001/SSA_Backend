@@ -51,7 +51,18 @@ export class LeadRepository {
 
   async findCategoryByCode(code: string): Promise<ProjectCategoryModel | null> {
     const repo = await this.getCategoryRepo();
-    return await repo.findOne({ where: { code } });
+    return await repo
+      .createQueryBuilder('category')
+      .where('LOWER(TRIM(category.code)) = LOWER(TRIM(:code))', { code })
+      .getOne();
+  }
+
+  async findCategoryByName(name: string): Promise<ProjectCategoryModel | null> {
+    const repo = await this.getCategoryRepo();
+    return await repo
+      .createQueryBuilder('category')
+      .where('LOWER(TRIM(category.name)) = LOWER(TRIM(:name))', { name })
+      .getOne();
   }
 
   async createCategory(categoryData: Partial<ProjectCategoryModel>): Promise<ProjectCategoryModel> {

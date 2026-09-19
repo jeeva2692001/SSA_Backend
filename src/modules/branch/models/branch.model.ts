@@ -32,6 +32,9 @@ export class BranchModel {
   @Column({ type: 'varchar', nullable: true })
   password?: string;
 
+  @Column({ type: 'boolean', default: false, nullable: true })
+  isFirstLogin?: boolean;
+
   @CreateDateColumn()
   createdAt!: Date;
 

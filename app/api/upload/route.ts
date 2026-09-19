@@ -30,6 +30,14 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, message: 'No file provided.' }, { status: 400 });
       }
 
+      const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        return NextResponse.json({
+          success: false,
+          message: 'File size exceeds the maximum permitted limit of 10 MB per file.'
+        }, { status: 400 });
+      }
+
       // Convert Next.js File to Buffer
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);

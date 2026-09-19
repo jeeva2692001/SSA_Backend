@@ -96,8 +96,17 @@ export class ClientService {
     if (data.clientName.trim().length < 2 || data.clientName.trim().length > 100) {
       throw new Error('Client Name must be between 2 and 100 characters.');
     }
-    if (data.company && (data.company.trim().length < 2 || data.company.trim().length > 150)) {
-      throw new Error('Company name must be between 2 and 150 characters.');
+    if (data.company && data.company.trim()) {
+      const comp = data.company.trim();
+      if (comp.length < 2 || comp.length > 150) {
+        throw new Error('Company name must be between 2 and 150 characters.');
+      }
+      if (!/[a-zA-Z]/.test(comp)) {
+        throw new Error('Company name must contain at least one letter and cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z0-9\s,.'&()/#_–—-]*$/.test(comp)) {
+        throw new Error('Company name contains invalid characters.');
+      }
     }
     if (data.contactPerson && (data.contactPerson.trim().length < 2 || data.contactPerson.trim().length > 100)) {
       throw new Error('Contact person name must be between 2 and 100 characters.');
@@ -124,14 +133,28 @@ export class ClientService {
     if (!data.city || !data.city.trim()) {
       throw new Error('City is required.');
     }
-    if (data.city.trim().length < 2 || data.city.trim().length > 60) {
+    const city = data.city.trim();
+    if (city.length < 2 || city.length > 60) {
       throw new Error('City must be between 2 and 60 characters.');
+    }
+    if (!/[a-zA-Z]/.test(city)) {
+      throw new Error('City cannot be only numeric or special characters.');
+    }
+    if (!/^[a-zA-Z\s.'–-]+$/.test(city)) {
+      throw new Error('City should contain only letters and standard punctuation.');
     }
     if (!data.state || !data.state.trim()) {
       throw new Error('State is required.');
     }
-    if (data.state.trim().length < 2 || data.state.trim().length > 60) {
+    const state = data.state.trim();
+    if (state.length < 2 || state.length > 60) {
       throw new Error('State must be between 2 and 60 characters.');
+    }
+    if (!/[a-zA-Z]/.test(state)) {
+      throw new Error('State cannot be only numeric or special characters.');
+    }
+    if (!/^[a-zA-Z\s.'–-]+$/.test(state)) {
+      throw new Error('State should contain only letters and standard punctuation.');
     }
     if (data.gstNo && data.gstNo.trim() && data.gstNo.trim().length !== 15) {
       throw new Error('GST number must be 15 characters.');
@@ -193,8 +216,17 @@ export class ClientService {
     if (data.clientName && (data.clientName.trim().length < 2 || data.clientName.trim().length > 100)) {
       throw new Error('Client Name must be between 2 and 100 characters.');
     }
-    if (data.company && (data.company.trim().length < 2 || data.company.trim().length > 150)) {
-      throw new Error('Company name must be between 2 and 150 characters.');
+    if (data.company && data.company.trim()) {
+      const comp = data.company.trim();
+      if (comp.length < 2 || comp.length > 150) {
+        throw new Error('Company name must be between 2 and 150 characters.');
+      }
+      if (!/[a-zA-Z]/.test(comp)) {
+        throw new Error('Company name must contain at least one letter and cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z0-9\s,.'&()/#_–—-]*$/.test(comp)) {
+        throw new Error('Company name contains invalid characters.');
+      }
     }
     if (data.contactPerson && (data.contactPerson.trim().length < 2 || data.contactPerson.trim().length > 100)) {
       throw new Error('Contact person name must be between 2 and 100 characters.');
@@ -205,11 +237,35 @@ export class ClientService {
     if (data.address && (data.address.trim().length < 5 || data.address.trim().length > 250)) {
       throw new Error('Address must be between 5 and 250 characters.');
     }
-    if (data.city && (data.city.trim().length < 2 || data.city.trim().length > 60)) {
-      throw new Error('City must be between 2 and 60 characters.');
+    if (data.city !== undefined) {
+      if (!data.city.trim()) {
+        throw new Error('City is required.');
+      }
+      const city = data.city.trim();
+      if (city.length < 2 || city.length > 60) {
+        throw new Error('City must be between 2 and 60 characters.');
+      }
+      if (!/[a-zA-Z]/.test(city)) {
+        throw new Error('City cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z\s.'–-]+$/.test(city)) {
+        throw new Error('City should contain only letters and standard punctuation.');
+      }
     }
-    if (data.state && (data.state.trim().length < 2 || data.state.trim().length > 60)) {
-      throw new Error('State must be between 2 and 60 characters.');
+    if (data.state !== undefined) {
+      if (!data.state.trim()) {
+        throw new Error('State is required.');
+      }
+      const state = data.state.trim();
+      if (state.length < 2 || state.length > 60) {
+        throw new Error('State must be between 2 and 60 characters.');
+      }
+      if (!/[a-zA-Z]/.test(state)) {
+        throw new Error('State cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z\s.'–-]+$/.test(state)) {
+        throw new Error('State should contain only letters and standard punctuation.');
+      }
     }
     if (data.gstNo && data.gstNo.trim() && data.gstNo.trim().length !== 15) {
       throw new Error('GST number must be 15 characters.');
