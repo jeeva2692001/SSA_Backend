@@ -23,7 +23,7 @@ export class UserModel {
   @Column({ type: 'varchar' })
   password!: string;
 
-  @Column({ type: 'boolean', default: false, nullable: true })
+  @Column({ type: 'boolean', default: true, nullable: true })
   isFirstLogin?: boolean;
 
   @Column({ type: 'varchar', nullable: true })

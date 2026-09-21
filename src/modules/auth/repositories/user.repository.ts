@@ -14,15 +14,19 @@ export class UserRepository {
   }
 
   async findByUserId(userId: string): Promise<UserModel | null> {
+    if (!userId) return null;
     const repo = await this.getRepository();
     return await repo.createQueryBuilder('user')
-      .where('LOWER(user.userId) = :userId', { userId: userId.toLowerCase() })
+      .where('TRIM(LOWER(user.userId)) = :userId', { userId: userId.trim().toLowerCase() })
       .getOne();
   }
 
   async findByEmail(email: string): Promise<UserModel | null> {
+    if (!email) return null;
     const repo = await this.getRepository();
-    return await repo.findOne({ where: { email } });
+    return await repo.createQueryBuilder('user')
+      .where('TRIM(LOWER(user.email)) = :email', { email: email.trim().toLowerCase() })
+      .getOne();
   }
 
   async createUser(userData: Partial<UserModel>): Promise<UserModel> {

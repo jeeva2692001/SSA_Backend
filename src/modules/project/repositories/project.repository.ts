@@ -50,9 +50,13 @@ export class ProjectRepository {
   }
 
   // --- PROJECTS ---
-  async getNextProjectSequence(prefix: string, year: number): Promise<number> {
+  async getNextProjectSequence(prefix: string, year: number, companyId?: string): Promise<number> {
     const repo = this.projectRepo();
-    const count = await repo.count({ where: { projectPrefix: prefix, year } });
+    const where: any = { projectPrefix: prefix, year };
+    if (companyId) {
+      where.companyId = companyId;
+    }
+    const count = await repo.count({ where });
     return count + 1;
   }
 
@@ -62,16 +66,30 @@ export class ProjectRepository {
     return await repo.save(project);
   }
 
-  async findAllProjects(): Promise<ProjectModel[]> {
+  async findAllProjects(companyId?: string): Promise<ProjectModel[]> {
+    if (companyId) {
+      return await this.projectRepo().find({
+        where: { companyId },
+        order: { createdAt: 'DESC' }
+      });
+    }
     return await this.projectRepo().find({ order: { createdAt: 'DESC' } });
   }
 
-  async findProjectById(id: string): Promise<ProjectModel | null> {
-    return await this.projectRepo().findOne({ where: { id } });
+  async findProjectById(id: string, companyId?: string): Promise<ProjectModel | null> {
+    const where: any = { id };
+    if (companyId) {
+      where.companyId = companyId;
+    }
+    return await this.projectRepo().findOne({ where });
   }
 
-  async findProjectByCode(projectCode: string): Promise<ProjectModel | null> {
-    return await this.projectRepo().findOne({ where: { projectCode } });
+  async findProjectByCode(projectCode: string, companyId?: string): Promise<ProjectModel | null> {
+    const where: any = { projectCode };
+    if (companyId) {
+      where.companyId = companyId;
+    }
+    return await this.projectRepo().findOne({ where });
   }
 
   // --- DISCIPLINES ---

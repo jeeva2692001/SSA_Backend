@@ -114,6 +114,7 @@ export class AuthController {
           role: 'Company',
           contactPerson: currentUser.contactPerson,
           status: currentUser.status,
+          mustChangePassword: !!currentUser.isFirstLogin,
         };
         return NextResponse.json(companyResponse, { status: 200 });
       }
@@ -128,6 +129,7 @@ export class AuthController {
           manager: currentUser.manager,
           status: currentUser.status,
           companyId: currentUser.companyId,
+          mustChangePassword: !!currentUser.isFirstLogin,
         };
         return NextResponse.json(branchResponse, { status: 200 });
       }
@@ -139,6 +141,7 @@ export class AuthController {
         email: currentUser.email,
         role: currentUser.role,
         avatar: currentUser.avatar,
+        mustChangePassword: currentUser.role === 'Super Admin' ? false : (currentUser.isFirstLogin ?? false),
       };
       return NextResponse.json(userResponse, { status: 200 });
     } catch (error: any) {
@@ -220,6 +223,21 @@ export class AuthController {
       console.error('Error in AuthController.changeInitialPassword:', error.message);
       return NextResponse.json(
         { message: error.message || 'Failed to update initial password.' },
+        { status: 400 }
+      );
+    }
+  }
+
+  async completeFirstLogin(req: NextRequest): Promise<NextResponse> {
+    try {
+      const body = await req.json();
+      const { username, otp, newPassword } = body;
+      const result = await this.authService.completeFirstLogin(username, otp, newPassword);
+      return NextResponse.json(result, { status: 200 });
+    } catch (error: any) {
+      console.error('Error in AuthController.completeFirstLogin:', error.message);
+      return NextResponse.json(
+        { message: error.message || 'Failed to complete first login verification.' },
         { status: 400 }
       );
     }

@@ -19,20 +19,27 @@ export class CompanyRepository {
   }
 
   async findByCompanyId(companyId: string): Promise<CompanyModel | null> {
+    if (!companyId) return null;
     const repo = await this.getRepository();
-    return await repo.findOne({ where: { companyId } });
+    return await repo.createQueryBuilder('company')
+      .where('TRIM(LOWER(company.companyId)) = :companyId', { companyId: companyId.trim().toLowerCase() })
+      .getOne();
   }
 
   async findByContactPerson(contactPerson: string): Promise<CompanyModel | null> {
+    if (!contactPerson) return null;
     const repo = await this.getRepository();
     return await repo.createQueryBuilder('company')
-      .where('LOWER(company.contactPerson) = :contactPerson', { contactPerson: contactPerson.toLowerCase() })
+      .where('TRIM(LOWER(company.contactPerson)) = :contactPerson', { contactPerson: contactPerson.trim().toLowerCase() })
       .getOne();
   }
 
   async findByEmail(email: string): Promise<CompanyModel | null> {
+    if (!email) return null;
     const repo = await this.getRepository();
-    return await repo.findOne({ where: { email } });
+    return await repo.createQueryBuilder('company')
+      .where('TRIM(LOWER(company.email)) = :email', { email: email.trim().toLowerCase() })
+      .getOne();
   }
 
   async createCompany(companyData: Partial<CompanyModel>): Promise<CompanyModel> {

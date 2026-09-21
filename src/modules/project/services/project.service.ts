@@ -104,7 +104,7 @@ export class ProjectService {
 
     const prefix = (input.projectPrefix || 'GVR').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const currentYear = new Date().getFullYear();
-    const seq = await this.projectRepo.getNextProjectSequence(prefix, currentYear);
+    const seq = await this.projectRepo.getNextProjectSequence(prefix, currentYear, input.companyId);
     const seqPadded = String(seq).padStart(3, '0');
 
     // Project Code format: [PROJECT_PREFIX]-[YEAR]-[SEQUENCE]

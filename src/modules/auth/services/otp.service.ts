@@ -36,22 +36,33 @@ export class OtpService {
   async createAndSendOtp(
     identifier: string,
     email: string,
-    userName: string = 'User'
+    userName: string = 'User',
+    purpose: 'initial_login' | 'password_reset' = 'initial_login',
+    companyName?: string
   ): Promise<{ maskedEmail: string; userName: string }> {
     const key = identifier.toLowerCase().trim();
     const otp = this.generateOtpCode(6);
     const expiresAt = Date.now() + this.OTP_TTL_MS;
 
-    this.otpStore.set(key, {
+    const data: OtpData = {
       otp,
       email,
       userName,
       expiresAt,
       attempts: 0,
-    });
+    };
 
-    // Send email async
-    await emailService.sendPasswordResetOtpEmail(email, otp, userName);
+    this.otpStore.set(key, data);
+    if (email) {
+      this.otpStore.set(email.toLowerCase().trim(), data);
+    }
+
+    // Send email according to purpose
+    if (purpose === 'initial_login') {
+      await emailService.sendInitialLoginOtpEmail(email, otp, userName, companyName);
+    } else {
+      await emailService.sendPasswordResetOtpEmail(email, otp, userName);
+    }
 
     return {
       maskedEmail: this.maskEmail(email),
@@ -59,9 +70,12 @@ export class OtpService {
     };
   }
 
-  verifyOtp(identifier: string, enteredOtp: string): { valid: boolean; message?: string } {
+  verifyOtp(identifier: string, enteredOtp: string, emailAlias?: string): { valid: boolean; message?: string } {
     const key = identifier.toLowerCase().trim();
-    const entry = this.otpStore.get(key);
+    let entry = this.otpStore.get(key);
+    if (!entry && emailAlias) {
+      entry = this.otpStore.get(emailAlias.toLowerCase().trim());
+    }
 
     if (!entry) {
       // Dev bypass code
@@ -76,6 +90,7 @@ export class OtpService {
 
     if (Date.now() > entry.expiresAt) {
       this.otpStore.delete(key);
+      if (emailAlias) this.otpStore.delete(emailAlias.toLowerCase().trim());
       return {
         valid: false,
         message: 'OTP has expired. Please request a new code.',
@@ -84,6 +99,7 @@ export class OtpService {
 
     if (entry.attempts >= this.MAX_ATTEMPTS) {
       this.otpStore.delete(key);
+      if (emailAlias) this.otpStore.delete(emailAlias.toLowerCase().trim());
       return {
         valid: false,
         message: 'Maximum verification attempts exceeded. Please request a new OTP.',

@@ -19,8 +19,18 @@ export class AuthService {
     this.companyRepository = new CompanyRepository();
   }
 
-  async companyLogin(username: string, password: string): Promise<{ user: any; token: string }> {
-    const company = await this.companyRepository.findByContactPerson(username);
+  async companyLogin(username: string, password: string): Promise<{ user: any; token: string; mustChangePassword?: boolean; maskedEmail?: string; username?: string; name?: string; role?: string }> {
+    const trimmedUser = (username || '').trim();
+    const trimmedPass = (password || '').trim();
+
+    let company = await this.companyRepository.findByContactPerson(trimmedUser);
+    if (!company) {
+      company = await this.companyRepository.findByCompanyId(trimmedUser);
+    }
+    if (!company) {
+      company = await this.companyRepository.findByEmail(trimmedUser);
+    }
+
     if (!company) {
       throw new Error('Invalid Username or Password.');
     }
@@ -33,9 +43,39 @@ export class AuthService {
       throw new Error('Company account has no password set. Please contact your administrator.');
     }
 
-    const isPasswordValid = await bcrypt.compare(password, company.password);
+    const isPasswordValid = await bcrypt.compare(trimmedPass, company.password);
     if (!isPasswordValid) {
       throw new Error('Invalid Username or Password.');
+    }
+
+    const mustChange = !!company.isFirstLogin;
+    if (mustChange) {
+      const { otpService } = await import('./otp.service');
+      const otpResult = await otpService.createAndSendOtp(
+        company.contactPerson,
+        company.email,
+        company.contactPerson,
+        'initial_login',
+        company.name
+      );
+      return {
+        mustChangePassword: true,
+        maskedEmail: otpResult.maskedEmail,
+        username: company.contactPerson,
+        name: company.name,
+        role: 'Company',
+        user: {
+          id: company.companyId,
+          userId: company.companyId,
+          name: company.name,
+          email: company.email,
+          role: 'Company',
+          contactPerson: company.contactPerson,
+          status: company.status,
+          mustChangePassword: true,
+        },
+        token: null as any,
+      };
     }
 
     const token = jwt.sign(
@@ -58,19 +98,53 @@ export class AuthService {
       role: 'Company',
       contactPerson: company.contactPerson,
       status: company.status,
-      mustChangePassword: !!company.isFirstLogin,
+      mustChangePassword: false,
     };
 
     return { user: companyResponse, token };
   }
 
-  async login(username: string, password: string): Promise<{ user: any; token: string }> {
-    // Try to find in UserRepository first
-    const user = await this.userRepository.findByUserId(username);
+  async login(username: string, password: string): Promise<{ user: any; token: string; mustChangePassword?: boolean; maskedEmail?: string; username?: string; name?: string; role?: string }> {
+    const trimmedUser = (username || '').trim();
+    const trimmedPass = (password || '').trim();
+
+    // 1. Try to find in UserRepository (by userId or email)
+    let user = await this.userRepository.findByUserId(trimmedUser);
+    if (!user) {
+      user = await this.userRepository.findByEmail(trimmedUser);
+    }
+
     if (user) {
-      const isPasswordValid = await bcrypt.compare(password, user.password);
+      const isPasswordValid = await bcrypt.compare(trimmedPass, user.password);
       if (!isPasswordValid) {
         throw new Error('Invalid Username or Password.');
+      }
+
+      const mustChange = user.role !== 'Super Admin' && !!user.isFirstLogin;
+      if (mustChange) {
+        const { otpService } = await import('./otp.service');
+        const otpResult = await otpService.createAndSendOtp(
+          user.userId,
+          user.email || 'user@ssa-erp.com',
+          user.name || user.userId
+        );
+        return {
+          mustChangePassword: true,
+          maskedEmail: otpResult.maskedEmail,
+          username: user.userId,
+          name: user.name,
+          role: user.role,
+          user: {
+            id: `USR-${String(user.id).padStart(3, '0')}`,
+            userId: user.userId,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            avatar: user.avatar,
+            mustChangePassword: true,
+          },
+          token: null as any,
+        };
       }
 
       const token = jwt.sign(
@@ -91,14 +165,21 @@ export class AuthService {
         email: user.email,
         role: user.role,
         avatar: user.avatar,
-        mustChangePassword: user.role === 'Super Admin' ? false : (user.isFirstLogin ?? false),
+        mustChangePassword: false,
       };
 
       return { user: userResponse, token };
     }
 
-    // Try to find in CompanyRepository
-    const company = await this.companyRepository.findByContactPerson(username);
+    // 2. Try to find in CompanyRepository (by contactPerson, companyId, or email)
+    let company = await this.companyRepository.findByContactPerson(trimmedUser);
+    if (!company) {
+      company = await this.companyRepository.findByCompanyId(trimmedUser);
+    }
+    if (!company) {
+      company = await this.companyRepository.findByEmail(trimmedUser);
+    }
+
     if (company) {
       if (company.status === 'Inactive') {
         throw new Error('This account has been deactivated. Please contact your administrator.');
@@ -108,9 +189,39 @@ export class AuthService {
         throw new Error('Company account has no password set. Please contact your administrator.');
       }
 
-      const isPasswordValid = await bcrypt.compare(password, company.password);
+      const isPasswordValid = await bcrypt.compare(trimmedPass, company.password);
       if (!isPasswordValid) {
         throw new Error('Invalid Username or Password.');
+      }
+
+      const mustChange = !!company.isFirstLogin;
+      if (mustChange) {
+        const { otpService } = await import('./otp.service');
+        const otpResult = await otpService.createAndSendOtp(
+          company.contactPerson,
+          company.email,
+          company.contactPerson,
+          'initial_login',
+          company.name
+        );
+        return {
+          mustChangePassword: true,
+          maskedEmail: otpResult.maskedEmail,
+          username: company.contactPerson,
+          name: company.name,
+          role: 'Company',
+          user: {
+            id: company.companyId,
+            userId: company.companyId,
+            name: company.name,
+            email: company.email,
+            role: 'Company',
+            contactPerson: company.contactPerson,
+            status: company.status,
+            mustChangePassword: true,
+          },
+          token: null as any,
+        };
       }
 
       const token = jwt.sign(
@@ -133,19 +244,18 @@ export class AuthService {
         role: 'Company',
         contactPerson: company.contactPerson,
         status: company.status,
-        mustChangePassword: !!company.isFirstLogin,
+        mustChangePassword: false,
       };
 
       return { user: companyResponse, token };
     }
 
-    // Try to find in BranchRepository
+    // 3. Try to find in BranchRepository (by branchId or code)
     const dataSource = await getDataSource();
     const branchRepo = dataSource.getRepository(BranchModel);
-    let branch = await branchRepo.findOne({ where: { branchId: username } });
-    if (!branch) {
-      branch = await branchRepo.findOne({ where: { code: username } });
-    }
+    let branch = await branchRepo.createQueryBuilder('branch')
+      .where('LOWER(branch.branchId) = :u OR LOWER(branch.code) = :u', { u: trimmedUser.toLowerCase() })
+      .getOne();
 
     if (branch) {
       if (branch.status === 'Inactive') {
@@ -153,9 +263,37 @@ export class AuthService {
       }
 
       const savedPassword = branch.password || await bcrypt.hash('Branch@123', 10);
-      const isPasswordValid = await bcrypt.compare(password, savedPassword);
+      const isPasswordValid = await bcrypt.compare(trimmedPass, savedPassword);
       if (!isPasswordValid) {
         throw new Error('Invalid Username or Password.');
+      }
+
+      const mustChange = !!branch.isFirstLogin;
+      if (mustChange) {
+        const { otpService } = await import('./otp.service');
+        const otpResult = await otpService.createAndSendOtp(
+          branch.branchId,
+          `${branch.code.toLowerCase()}@ssa-erp.com`,
+          branch.name || branch.branchId
+        );
+        return {
+          mustChangePassword: true,
+          maskedEmail: otpResult.maskedEmail,
+          username: branch.branchId,
+          name: branch.name,
+          role: 'Branch',
+          user: {
+            id: branch.branchId,
+            userId: branch.branchId,
+            name: branch.name,
+            role: 'Branch',
+            code: branch.code,
+            manager: branch.manager,
+            companyId: branch.companyId,
+            mustChangePassword: true,
+          },
+          token: null as any,
+        };
       }
 
       const token = jwt.sign(
@@ -178,13 +316,184 @@ export class AuthService {
         code: branch.code,
         manager: branch.manager,
         companyId: branch.companyId,
-        mustChangePassword: !!branch.isFirstLogin,
+        mustChangePassword: false,
       };
 
       return { user: branchResponse, token };
     }
 
     throw new Error('Invalid Username or Password.');
+  }
+
+  async completeFirstLogin(
+    username: string,
+    otp: string,
+    newPassword: string
+  ): Promise<{ user: any; token: string }> {
+    const trimmedUser = (username || '').trim();
+    const trimmedOtp = (otp || '').trim();
+    const trimmedNew = (newPassword || '').trim();
+
+    if (!trimmedUser || !trimmedOtp || !trimmedNew) {
+      throw new Error('Username, OTP, and new password are required.');
+    }
+
+    // Resolve target account first
+    let user = await this.userRepository.findByUserId(trimmedUser);
+    if (!user) {
+      user = await this.userRepository.findByEmail(trimmedUser);
+    }
+
+    let company: CompanyModel | null = null;
+    if (!user) {
+      company = await this.companyRepository.findByContactPerson(trimmedUser);
+      if (!company) {
+        company = await this.companyRepository.findByCompanyId(trimmedUser);
+      }
+      if (!company) {
+        company = await this.companyRepository.findByEmail(trimmedUser);
+      }
+    }
+
+    let branch: BranchModel | null = null;
+    if (!user && !company) {
+      const dataSource = await getDataSource();
+      const branchRepo = dataSource.getRepository(BranchModel);
+      branch = await branchRepo.createQueryBuilder('branch')
+        .where('LOWER(branch.branchId) = :u OR LOWER(branch.code) = :u', { u: trimmedUser.toLowerCase() })
+        .getOne();
+    }
+
+    if (!user && !company && !branch) {
+      throw new Error('Account not found.');
+    }
+
+    // 1. Verify OTP with email alias support
+    const { otpService } = await import('./otp.service');
+    const aliasEmail = user?.email || company?.email || (branch ? `${branch.code.toLowerCase()}@ssa-erp.com` : undefined);
+    const otpResult = otpService.verifyOtp(trimmedUser, trimmedOtp, aliasEmail);
+    if (!otpResult.valid) {
+      throw new Error(otpResult.message || 'Invalid or expired OTP.');
+    }
+
+    // 2. Validate Password Policy
+    if (trimmedNew.length < 8) {
+      throw new Error('Password must be at least 8 characters.');
+    }
+    if (trimmedNew.length > 20) {
+      throw new Error('Password cannot exceed 20 characters.');
+    }
+    if (!/[A-Z]/.test(trimmedNew)) {
+      throw new Error('Password must contain at least one uppercase letter.');
+    }
+    if (!/[a-z]/.test(trimmedNew)) {
+      throw new Error('Password must contain at least one lowercase letter.');
+    }
+    if (!/[0-9]/.test(trimmedNew)) {
+      throw new Error('Password must contain at least one number.');
+    }
+    if (!/[^A-Za-z0-9]/.test(trimmedNew)) {
+      throw new Error('Password must contain at least one special character (!@#$...).');
+    }
+
+    // 3. Prevent reusing the temporary password
+    const currentPassHash = user?.password || company?.password || branch?.password;
+    if (currentPassHash) {
+      const isSame = await bcrypt.compare(trimmedNew, currentPassHash);
+      if (isSame) {
+        throw new Error('New password must be different from the temporary password.');
+      }
+    }
+
+    const hashedNew = await bcrypt.hash(trimmedNew, 10);
+
+    // 4. Update account and clear isFirstLogin
+    if (user) {
+      user.password = hashedNew;
+      user.isFirstLogin = false;
+      await this.userRepository.createUser(user);
+      otpService.consumeOtp(trimmedUser);
+      if (user.userId) otpService.consumeOtp(user.userId);
+      if (user.email) otpService.consumeOtp(user.email);
+
+      const token = jwt.sign(
+        { id: user.id, userId: user.userId, email: user.email, role: user.role },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRY as any }
+      );
+      return {
+        user: {
+          id: `USR-${String(user.id).padStart(3, '0')}`,
+          userId: user.userId,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          avatar: user.avatar,
+          mustChangePassword: false,
+        },
+        token,
+      };
+    }
+
+    if (company) {
+      company.password = hashedNew;
+      company.isFirstLogin = false;
+      await this.companyRepository.createCompany(company);
+      otpService.consumeOtp(trimmedUser);
+      if (company.contactPerson) otpService.consumeOtp(company.contactPerson);
+      if (company.companyId) otpService.consumeOtp(company.companyId);
+      if (company.email) otpService.consumeOtp(company.email);
+
+      const token = jwt.sign(
+        { id: company.id, companyId: company.companyId, email: company.email, role: 'Company', name: company.name },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRY as any }
+      );
+      return {
+        user: {
+          id: company.companyId,
+          userId: company.companyId,
+          name: company.name,
+          email: company.email,
+          role: 'Company',
+          contactPerson: company.contactPerson,
+          status: company.status,
+          mustChangePassword: false,
+        },
+        token,
+      };
+    }
+
+    if (branch) {
+      branch.password = hashedNew;
+      branch.isFirstLogin = false;
+      const dataSource = await getDataSource();
+      const branchRepo = dataSource.getRepository(BranchModel);
+      await branchRepo.save(branch);
+      otpService.consumeOtp(trimmedUser);
+      if (branch.branchId) otpService.consumeOtp(branch.branchId);
+
+      const token = jwt.sign(
+        { id: branch.id, branchId: branch.branchId, role: 'Branch', name: branch.name, companyId: branch.companyId },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRY as any }
+      );
+      return {
+        user: {
+          id: branch.branchId,
+          userId: branch.branchId,
+          name: branch.name,
+          role: 'Branch',
+          code: branch.code,
+          manager: branch.manager,
+          companyId: branch.companyId,
+          mustChangePassword: false,
+        },
+        token,
+      };
+    }
+
+    throw new Error('Account not found.');
   }
 
   async register(userData: Partial<UserModel>): Promise<UserModel> {
@@ -202,7 +511,7 @@ export class AuthService {
       throw new Error('Email is already registered.');
     }
 
-    const hashedPassword = await bcrypt.hash(userData.password, 10);
+    const hashedPassword = await bcrypt.hash((userData.password || '').trim(), 10);
     const newUserData = {
       ...userData,
       password: hashedPassword,
@@ -251,7 +560,10 @@ export class AuthService {
     const hashedNew = await bcrypt.hash(trimmedNew, 10);
 
     // 1. Check User
-    const user = await this.userRepository.findByUserId(trimmedUser);
+    let user = await this.userRepository.findByUserId(trimmedUser);
+    if (!user) {
+      user = await this.userRepository.findByEmail(trimmedUser);
+    }
     if (user) {
       const isValid = await bcrypt.compare(trimmedCurrent, user.password);
       if (!isValid) {
@@ -281,7 +593,13 @@ export class AuthService {
     }
 
     // 2. Check Company
-    const company = await this.companyRepository.findByContactPerson(trimmedUser);
+    let company = await this.companyRepository.findByContactPerson(trimmedUser);
+    if (!company) {
+      company = await this.companyRepository.findByCompanyId(trimmedUser);
+    }
+    if (!company) {
+      company = await this.companyRepository.findByEmail(trimmedUser);
+    }
     if (company) {
       const currentHash = company.password || '';
       const isValid = await bcrypt.compare(trimmedCurrent, currentHash);
@@ -490,7 +808,7 @@ export class AuthService {
 
     // Generate & send OTP
     const { otpService } = await import('./otp.service');
-    const otpResult = await otpService.createAndSendOtp(trimmed, foundEmail, foundName);
+    const otpResult = await otpService.createAndSendOtp(trimmed, foundEmail, foundName, 'password_reset');
 
     return {
       exists: true,
@@ -504,8 +822,22 @@ export class AuthService {
     if (!trimmed || !otp) {
       throw new Error('Username and OTP are required.');
     }
+
+    // Resolve alias email if available
+    let aliasEmail: string | undefined = undefined;
+    const user = await this.userRepository.findByUserId(trimmed).catch(() => null);
+    if (user?.email) {
+      aliasEmail = user.email;
+    } else {
+      const company = await this.companyRepository.findByContactPerson(trimmed).catch(() => null) 
+        || await this.companyRepository.findByCompanyId(trimmed).catch(() => null);
+      if (company?.email) {
+        aliasEmail = company.email;
+      }
+    }
+
     const { otpService } = await import('./otp.service');
-    const result = otpService.verifyOtp(trimmed, otp);
+    const result = otpService.verifyOtp(trimmed, otp, aliasEmail);
     if (!result.valid) {
       throw new Error(result.message || 'Invalid OTP code.');
     }

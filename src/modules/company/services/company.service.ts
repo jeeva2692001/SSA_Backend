@@ -123,12 +123,12 @@ export class CompanyService {
       throw new Error('Password cannot exceed 20 characters.');
     }
 
-    const existingEmail = await this.companyRepository.findByEmail(companyData.email);
+    const existingEmail = await this.companyRepository.findByEmail(companyData.email?.trim() || '');
     if (existingEmail) {
       throw new Error('Company email is already registered.');
     }
 
-    const existingContactPerson = await this.companyRepository.findByContactPerson(companyData.contactPerson);
+    const existingContactPerson = await this.companyRepository.findByContactPerson(companyData.contactPerson?.trim() || '');
     if (existingContactPerson) {
       throw new Error('Contact person name (username) is already registered.');
     }
@@ -137,12 +137,24 @@ export class CompanyService {
     const companyId = await this.companyRepository.getNextCompanyId();
 
     // Hash password before saving
-    const hashedPassword = await bcrypt.hash(companyData.password, 10);
+    const hashedPassword = await bcrypt.hash(companyData.password.trim(), 10);
 
-    companyData.companyId = companyId;
-    companyData.password = hashedPassword;
-    companyData.isFirstLogin = true;
-    return await this.companyRepository.createCompany(companyData);
+    const cleanCompanyData: Partial<CompanyModel> = {
+      ...companyData,
+      companyId,
+      name: companyData.name?.trim(),
+      contactPerson: companyData.contactPerson?.trim(),
+      email: companyData.email?.trim().toLowerCase(),
+      address: companyData.address?.trim(),
+      mobileNumber: companyData.mobileNumber?.trim(),
+      designation: companyData.designation?.trim(),
+      gstNo: companyData.gstNo?.trim().toUpperCase(),
+      panNo: companyData.panNo?.trim().toUpperCase(),
+      password: hashedPassword,
+      isFirstLogin: true,
+    };
+
+    return await this.companyRepository.createCompany(cleanCompanyData);
   }
 
   async updateCompany(companyId: string, companyData: Partial<CompanyModel>): Promise<CompanyModel> {
