@@ -185,10 +185,7 @@ export class ClientService {
     // Generate clientCode if not provided (e.g. CL-2026-001)
     let clientCode = data.clientCode;
     if (!clientCode) {
-      const total = await this.clientRepo.countClients(scopedCompanyId);
-      const year = new Date().getFullYear();
-      const seq = String(total + 1).padStart(3, '0');
-      clientCode = `CL-${year}-${seq}`;
+      clientCode = await this.clientRepo.getNextClientCode();
     }
 
     const newClient = await this.clientRepo.create({

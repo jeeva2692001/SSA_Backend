@@ -268,9 +268,9 @@ export class ProjectService {
   }
 
   // --- QUERY METHODS ---
-  async getAllProjects() {
+  async getAllProjects(companyId?: string) {
     await this.seedMasterData();
-    const projects = await this.projectRepo.findAllProjects();
+    const projects = await this.projectRepo.findAllProjects(companyId);
     const result = [];
     for (const p of projects) {
       const disciplines = await this.projectRepo.findProjectDisciplines(p.id);
@@ -285,10 +285,10 @@ export class ProjectService {
     return result;
   }
 
-  async getProjectById(idOrCode: string) {
-    let project = await this.projectRepo.findProjectById(idOrCode);
+  async getProjectById(idOrCode: string, companyId?: string) {
+    let project = await this.projectRepo.findProjectById(idOrCode, companyId);
     if (!project) {
-      project = await this.projectRepo.findProjectByCode(idOrCode);
+      project = await this.projectRepo.findProjectByCode(idOrCode, companyId);
     }
     if (!project) return null;
 
@@ -303,8 +303,16 @@ export class ProjectService {
     };
   }
 
-  async getProjectDrawings(projectId: string, disciplineCode?: string) {
-    const drawings = await this.projectRepo.findDrawingsByProjectId(projectId, disciplineCode);
+  async getProjectDrawings(projectId: string, disciplineCode?: string, companyId?: string) {
+    let project = await this.projectRepo.findProjectById(projectId, companyId);
+    if (!project) {
+      project = await this.projectRepo.findProjectByCode(projectId, companyId);
+    }
+    if (!project && companyId) {
+      return [];
+    }
+    const targetId = project ? project.id : projectId;
+    const drawings = await this.projectRepo.findDrawingsByProjectId(targetId, disciplineCode);
     const result = [];
 
     for (const d of drawings) {
@@ -436,11 +444,11 @@ export class ProjectService {
   }
 
   // --- MANUALLY CREATE DISCIPLINE FOLDER ---
-  async addProjectDiscipline(idOrCode: string, disciplineCode: string) {
+  async addProjectDiscipline(idOrCode: string, disciplineCode: string, companyId?: string) {
     await this.seedMasterData();
-    let project = await this.projectRepo.findProjectById(idOrCode);
+    let project = await this.projectRepo.findProjectById(idOrCode, companyId);
     if (!project) {
-      project = await this.projectRepo.findProjectByCode(idOrCode);
+      project = await this.projectRepo.findProjectByCode(idOrCode, companyId);
     }
     if (!project) throw new Error('Project not found.');
 
@@ -529,17 +537,17 @@ export class ProjectService {
       }
     }
 
-    return await this.getProjectById(project.id);
+    return await this.getProjectById(project.id, companyId);
   }
 
-  async deleteProjectDiscipline(idOrCode: string, disciplineCode: string) {
-    let project = await this.projectRepo.findProjectById(idOrCode);
+  async deleteProjectDiscipline(idOrCode: string, disciplineCode: string, companyId?: string) {
+    let project = await this.projectRepo.findProjectById(idOrCode, companyId);
     if (!project) {
-      project = await this.projectRepo.findProjectByCode(idOrCode);
+      project = await this.projectRepo.findProjectByCode(idOrCode, companyId);
     }
     if (project) {
       await this.projectRepo.deleteProjectDiscipline(project.id, disciplineCode);
-      return await this.getProjectById(project.id);
+      return await this.getProjectById(project.id, companyId);
     }
     return null;
   }
@@ -608,12 +616,15 @@ export class ProjectService {
   /**
    * Fetch all folders for a project, resolving by UUID or projectCode
    */
-  async getProjectFolders(projectIdOrCode: string): Promise<{ project: ProjectModel | null; folders: FolderModel[] }> {
-    let project = await this.projectRepo.findProjectById(projectIdOrCode);
+  async getProjectFolders(projectIdOrCode: string, companyId?: string): Promise<{ project: ProjectModel | null; folders: FolderModel[] }> {
+    let project = await this.projectRepo.findProjectById(projectIdOrCode, companyId);
     if (!project) {
-      project = await this.projectRepo.findProjectByCode(projectIdOrCode);
+      project = await this.projectRepo.findProjectByCode(projectIdOrCode, companyId);
     }
-    const targetId = project ? project.id : projectIdOrCode;
+    if (!project) {
+      return { project: null, folders: [] };
+    }
+    const targetId = project.id;
     let folders = await this.projectRepo.findFoldersByProjectId(targetId);
 
     // If project exists but has 0 folders, auto-generate them
@@ -633,10 +644,13 @@ export class ProjectService {
     name: string;
     folderType?: string;
     createdBy?: string;
-  }): Promise<FolderModel> {
-    let project = await this.projectRepo.findProjectById(input.projectId);
+  }, companyId?: string): Promise<FolderModel> {
+    let project = await this.projectRepo.findProjectById(input.projectId, companyId);
     if (!project) {
-      project = await this.projectRepo.findProjectByCode(input.projectId);
+      project = await this.projectRepo.findProjectByCode(input.projectId, companyId);
+    }
+    if (!project && companyId) {
+      throw new Error('Project not found.');
     }
     const pId = project ? project.id : input.projectId;
 
@@ -671,10 +685,10 @@ export class ProjectService {
   /**
    * Explicitly initialize or re-sync standard hierarchy for an existing project
    */
-  async initProjectFolderHierarchy(projectIdOrCode: string, createdBy: string = 'System'): Promise<FolderModel[]> {
-    let project = await this.projectRepo.findProjectById(projectIdOrCode);
+  async initProjectFolderHierarchy(projectIdOrCode: string, createdBy: string = 'System', companyId?: string): Promise<FolderModel[]> {
+    let project = await this.projectRepo.findProjectById(projectIdOrCode, companyId);
     if (!project) {
-      project = await this.projectRepo.findProjectByCode(projectIdOrCode);
+      project = await this.projectRepo.findProjectByCode(projectIdOrCode, companyId);
     }
     if (!project) {
       throw new Error(`Project "${projectIdOrCode}" not found.`);
@@ -685,10 +699,13 @@ export class ProjectService {
   /**
    * Files in a project / folder
    */
-  async getProjectFiles(projectIdOrCode: string, folderId?: string): Promise<ProjectFileModel[]> {
-    let project = await this.projectRepo.findProjectById(projectIdOrCode);
+  async getProjectFiles(projectIdOrCode: string, folderId?: string, companyId?: string): Promise<ProjectFileModel[]> {
+    let project = await this.projectRepo.findProjectById(projectIdOrCode, companyId);
     if (!project) {
-      project = await this.projectRepo.findProjectByCode(projectIdOrCode);
+      project = await this.projectRepo.findProjectByCode(projectIdOrCode, companyId);
+    }
+    if (!project && companyId) {
+      return [];
     }
     const pId = project ? project.id : projectIdOrCode;
     return await this.projectRepo.findProjectFiles(pId, folderId);
@@ -705,10 +722,13 @@ export class ProjectService {
     fileType?: string;
     fileSize?: number;
     uploadedBy?: string;
-  }): Promise<ProjectFileModel> {
-    let project = await this.projectRepo.findProjectById(input.projectId);
+  }, companyId?: string): Promise<ProjectFileModel> {
+    let project = await this.projectRepo.findProjectById(input.projectId, companyId);
     if (!project) {
-      project = await this.projectRepo.findProjectByCode(input.projectId);
+      project = await this.projectRepo.findProjectByCode(input.projectId, companyId);
+    }
+    if (!project && companyId) {
+      throw new Error('Project not found.');
     }
     const pId = project ? project.id : input.projectId;
 

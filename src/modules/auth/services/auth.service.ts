@@ -855,6 +855,7 @@ export class AuthService {
     const user = await this.userRepository.findByUserId(trimmed);
     if (user) {
       user.password = hashedPassword;
+      user.isFirstLogin = false;
       await this.userRepository.createUser(user);
       const { otpService } = await import('./otp.service');
       otpService.consumeOtp(trimmed);
@@ -864,6 +865,7 @@ export class AuthService {
     const userByEmail = await this.userRepository.findByEmail(trimmed);
     if (userByEmail) {
       userByEmail.password = hashedPassword;
+      userByEmail.isFirstLogin = false;
       await this.userRepository.createUser(userByEmail);
       const { otpService } = await import('./otp.service');
       otpService.consumeOtp(trimmed);
@@ -873,6 +875,7 @@ export class AuthService {
     const company = await this.companyRepository.findByContactPerson(trimmed);
     if (company) {
       company.password = hashedPassword;
+      company.isFirstLogin = false;
       await this.companyRepository.createCompany(company);
       const { otpService } = await import('./otp.service');
       otpService.consumeOtp(trimmed);
@@ -882,6 +885,7 @@ export class AuthService {
     const companyByEmail = await this.companyRepository.findByEmail(trimmed);
     if (companyByEmail) {
       companyByEmail.password = hashedPassword;
+      companyByEmail.isFirstLogin = false;
       await this.companyRepository.createCompany(companyByEmail);
       const { otpService } = await import('./otp.service');
       otpService.consumeOtp(trimmed);
@@ -896,6 +900,7 @@ export class AuthService {
     }
     if (branch) {
       branch.password = hashedPassword;
+      branch.isFirstLogin = false;
       await branchRepo.save(branch);
       const { otpService } = await import('./otp.service');
       otpService.consumeOtp(trimmed);

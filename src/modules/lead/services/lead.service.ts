@@ -1,11 +1,14 @@
 import { LeadRepository } from '../repositories/lead.repository';
 import { LeadModel } from '../models/lead.model';
+import { ClientRepository } from '../../client/repositories/client.repository';
 
 export class LeadService {
   private leadRepository: LeadRepository;
+  private clientRepository: ClientRepository;
 
   constructor() {
     this.leadRepository = new LeadRepository();
+    this.clientRepository = new ClientRepository();
   }
 
   async getCategories() {
@@ -1187,5 +1190,86 @@ export class LeadService {
     }
 
     await this.leadRepository.deleteLead(id);
+  }
+
+  async convertLeadToClient(id: number, userContext: { companyId: string; branchId: string | null; role: string; userId: string }) {
+    const lead = await this.leadRepository.findLeadById(id);
+    if (!lead) {
+      throw new Error('Lead not found.');
+    }
+
+    if (userContext.role !== 'Super Admin' && userContext.role !== 'Employee') {
+      if (lead.companyId !== userContext.companyId) {
+        throw new Error('Unauthorized to convert this lead.');
+      }
+      if (userContext.role === 'Branch' && userContext.branchId && lead.branchId !== userContext.branchId) {
+        throw new Error('Unauthorized to convert this lead.');
+      }
+    }
+
+    if (lead.status === 'Draft') {
+      throw new Error('Draft leads cannot be converted to a Client. Please complete and submit the lead details first.');
+    }
+
+    let client = null;
+    const scopedCompanyId = lead.companyId || userContext.companyId;
+
+    // 1. Check if lead already has a linked clientId
+    if (lead.clientId) {
+      client = await this.clientRepository.findById(lead.clientId);
+    }
+
+    // 2. Check if a client with this mobile number already exists in company
+    if (!client && lead.mobile && lead.mobile.trim()) {
+      const cleanMobile = lead.mobile.trim();
+      client = await this.clientRepository.findByMobile(cleanMobile, scopedCompanyId);
+    }
+
+    // 3. If client does not exist, create a new Client record from the lead details
+    if (!client) {
+      const clientCode = await this.clientRepository.getNextClientCode();
+
+      const clientName = (lead.clientName || lead.contactPerson || lead.company || 'Client Account').trim();
+      const company = (lead.company || lead.organisation || clientName).trim();
+      const contactPerson = (lead.contactPerson || lead.clientName || clientName).trim();
+      const mobile = (lead.mobile || '9999999999').replace(/\D/g, '').slice(0, 10).padStart(10, '9');
+      const email = (lead.email || `${clientCode.toLowerCase().replace(/[^a-z0-9]/g, '')}@client.com`).trim();
+      const address = (lead.siteAddress || lead.locationAddress || 'Main Office / Site').trim();
+      const city = (lead.city || 'Chennai').trim();
+      const state = (lead.state || 'Tamil Nadu').trim();
+      const country = (lead.country || 'India').trim();
+
+      client = await this.clientRepository.create({
+        clientCode,
+        companyId: scopedCompanyId,
+        branchId: lead.branchId !== undefined ? lead.branchId : userContext.branchId,
+        clientName,
+        company,
+        contactPerson,
+        mobile,
+        email,
+        address,
+        city,
+        state,
+        country,
+        clientType: lead.projectType || 'Corporate',
+        status: 'Active',
+        remarks: `Converted from Lead ${lead.leadId || `LD-${lead.id}`}`
+      });
+    }
+
+    // 4. Update Lead record: link clientId & update status to 'Converted to Client'
+    lead.clientId = client.id;
+    lead.status = 'Converted to Client';
+    const updatedLead = await this.leadRepository.updateLead(lead.id, {
+      clientId: client.id,
+      status: 'Converted to Client'
+    });
+
+    return {
+      success: true,
+      client,
+      lead: updatedLead || lead
+    };
   }
 }

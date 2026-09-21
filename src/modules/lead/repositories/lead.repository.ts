@@ -140,6 +140,14 @@ export class LeadRepository {
     return await repo.save(lead);
   }
 
+  async updateLead(id: number, leadData: Partial<LeadModel>): Promise<LeadModel | null> {
+    const repo = await this.getLeadRepo();
+    const lead = await repo.findOne({ where: { id } });
+    if (!lead) return null;
+    Object.assign(lead, leadData);
+    return await repo.save(lead);
+  }
+
   async deleteLead(id: number): Promise<void> {
     const repo = await this.getLeadRepo();
     await repo.delete(id);

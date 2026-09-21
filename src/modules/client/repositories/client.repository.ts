@@ -89,6 +89,30 @@ export class ClientRepository {
     return await repo.count();
   }
 
+  async getNextClientCode(year: number = new Date().getFullYear()): Promise<string> {
+    const repo = await this.getClientRepo();
+    const prefix = `CL-${year}-`;
+    const clients = await repo
+      .createQueryBuilder('client')
+      .select('client.clientCode', 'clientCode')
+      .where('client.clientCode LIKE :pattern', { pattern: `${prefix}%` })
+      .getRawMany();
+
+    let maxSeq = 0;
+    for (const c of clients) {
+      const parts = (c.clientCode || '').split('-');
+      if (parts.length >= 3) {
+        const seqNum = parseInt(parts[2], 10);
+        if (!isNaN(seqNum) && seqNum > maxSeq) {
+          maxSeq = seqNum;
+        }
+      }
+    }
+
+    const nextSeq = String(maxSeq + 1).padStart(3, '0');
+    return `CL-${year}-${nextSeq}`;
+  }
+
   async create(data: Partial<ClientModel>): Promise<ClientModel> {
     const repo = await this.getClientRepo();
     const client = repo.create(data);
