@@ -120,7 +120,7 @@ if (process.env.NODE_ENV !== "production") {
 export async function getDataSource() {
   if (!AppDataSource.isInitialized) {
     await AppDataSource.initialize();
-
+    
     // Ensure all entity metadata targetNames are set to unique tableName to prevent minification-induced cyclic dependency ("Cyclic dependency: 'c'")
     AppDataSource.entityMetadatas.forEach(m => {
       if (m.tableName) {

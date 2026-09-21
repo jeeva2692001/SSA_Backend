@@ -114,6 +114,7 @@ export class AuthController {
           role: 'Company',
           contactPerson: currentUser.contactPerson,
           status: currentUser.status,
+          mustChangePassword: !!currentUser.isFirstLogin,
         };
         return NextResponse.json(companyResponse, { status: 200 });
       }
@@ -128,6 +129,7 @@ export class AuthController {
           manager: currentUser.manager,
           status: currentUser.status,
           companyId: currentUser.companyId,
+          mustChangePassword: !!currentUser.isFirstLogin,
         };
         return NextResponse.json(branchResponse, { status: 200 });
       }
@@ -139,6 +141,7 @@ export class AuthController {
         email: currentUser.email,
         role: currentUser.role,
         avatar: currentUser.avatar,
+        mustChangePassword: currentUser.role === 'Super Admin' ? false : (currentUser.isFirstLogin ?? false),
       };
       return NextResponse.json(userResponse, { status: 200 });
     } catch (error: any) {
@@ -146,6 +149,96 @@ export class AuthController {
       return NextResponse.json(
         { message: 'Failed to retrieve profile.' },
         { status: 500 }
+      );
+    }
+  }
+
+  async forgotPassword(req: NextRequest): Promise<NextResponse> {
+    try {
+      const body = await req.json();
+      const { username } = body;
+      const result = await this.authService.verifyUserForReset(username);
+      return NextResponse.json(result, { status: 200 });
+    } catch (error: any) {
+      console.error('Error in AuthController.forgotPassword:', error.message);
+      return NextResponse.json(
+        { message: error.message || 'Verification failed.' },
+        { status: 400 }
+      );
+    }
+  }
+
+  async verifyOtp(req: NextRequest): Promise<NextResponse> {
+    try {
+      const body = await req.json();
+      const { username, otp } = body;
+      const result = await this.authService.verifyOtp(username, otp);
+      return NextResponse.json(result, { status: 200 });
+    } catch (error: any) {
+      console.error('Error in AuthController.verifyOtp:', error.message);
+      return NextResponse.json(
+        { message: error.message || 'OTP verification failed.' },
+        { status: 400 }
+      );
+    }
+  }
+
+  async resendOtp(req: NextRequest): Promise<NextResponse> {
+    try {
+      const body = await req.json();
+      const { username } = body;
+      const result = await this.authService.verifyUserForReset(username);
+      return NextResponse.json({ message: 'OTP resent successfully.', ...result }, { status: 200 });
+    } catch (error: any) {
+      console.error('Error in AuthController.resendOtp:', error.message);
+      return NextResponse.json(
+        { message: error.message || 'Failed to resend OTP.' },
+        { status: 400 }
+      );
+    }
+  }
+
+  async resetPassword(req: NextRequest): Promise<NextResponse> {
+    try {
+      const body = await req.json();
+      const { username, newPassword } = body;
+      await this.authService.resetPassword(username, newPassword);
+      return NextResponse.json({ message: 'Password reset successfully.' }, { status: 200 });
+    } catch (error: any) {
+      console.error('Error in AuthController.resetPassword:', error.message);
+      return NextResponse.json(
+        { message: error.message || 'Password reset failed.' },
+        { status: 400 }
+      );
+    }
+  }
+
+  async changeInitialPassword(req: NextRequest): Promise<NextResponse> {
+    try {
+      const body = await req.json();
+      const { username, currentPassword, newPassword } = body;
+      const result = await this.authService.changeInitialPassword(username, currentPassword, newPassword);
+      return NextResponse.json(result, { status: 200 });
+    } catch (error: any) {
+      console.error('Error in AuthController.changeInitialPassword:', error.message);
+      return NextResponse.json(
+        { message: error.message || 'Failed to update initial password.' },
+        { status: 400 }
+      );
+    }
+  }
+
+  async completeFirstLogin(req: NextRequest): Promise<NextResponse> {
+    try {
+      const body = await req.json();
+      const { username, otp, newPassword } = body;
+      const result = await this.authService.completeFirstLogin(username, otp, newPassword);
+      return NextResponse.json(result, { status: 200 });
+    } catch (error: any) {
+      console.error('Error in AuthController.completeFirstLogin:', error.message);
+      return NextResponse.json(
+        { message: error.message || 'Failed to complete first login verification.' },
+        { status: 400 }
       );
     }
   }

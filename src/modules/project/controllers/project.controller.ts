@@ -4,9 +4,18 @@ import { ProjectService } from '../services/project.service';
 export class ProjectController {
   private projectService = new ProjectService();
 
+  private getCompanyId(user: any, searchParams?: URLSearchParams): string | undefined {
+    if (user?.role === 'Super Admin') {
+      return searchParams?.get('companyId') || undefined;
+    }
+    return user?.companyId || undefined;
+  }
+
   async getProjects(req: NextRequest, user: any) {
     try {
-      const projects = await this.projectService.getAllProjects();
+      const { searchParams } = new URL(req.url);
+      const companyId = this.getCompanyId(user, searchParams);
+      const projects = await this.projectService.getAllProjects(companyId);
       return NextResponse.json({ success: true, data: projects });
     } catch (err: any) {
       console.error('[ProjectController] getProjects error:', err);
@@ -20,7 +29,14 @@ export class ProjectController {
       if (!body.projectName) {
         return NextResponse.json({ success: false, message: 'Project Name is required.' }, { status: 400 });
       }
-      const project = await this.projectService.createProject(body);
+      const companyId = user?.role === 'Super Admin'
+        ? (body.companyId || user?.companyId)
+        : user?.companyId;
+
+      const project = await this.projectService.createProject({
+        ...body,
+        companyId
+      });
       return NextResponse.json({ success: true, data: project });
     } catch (err: any) {
       console.error('[ProjectController] createProject error:', err);
@@ -30,7 +46,8 @@ export class ProjectController {
 
   async getProjectById(req: NextRequest, projectId: string, user: any) {
     try {
-      const project = await this.projectService.getProjectById(projectId);
+      const companyId = this.getCompanyId(user);
+      const project = await this.projectService.getProjectById(projectId, companyId);
       if (!project) {
         return NextResponse.json({ success: false, message: 'Project not found.' }, { status: 404 });
       }
@@ -71,7 +88,8 @@ export class ProjectController {
       if (!body.disciplineCode) {
         return NextResponse.json({ success: false, message: 'Discipline Code is required.' }, { status: 400 });
       }
-      const updatedProject = await this.projectService.addProjectDiscipline(projectId, body.disciplineCode);
+      const companyId = this.getCompanyId(user);
+      const updatedProject = await this.projectService.addProjectDiscipline(projectId, body.disciplineCode, companyId);
       return NextResponse.json({ success: true, data: updatedProject });
     } catch (err: any) {
       console.error('[ProjectController] addProjectDiscipline error:', err);
@@ -81,7 +99,8 @@ export class ProjectController {
 
   async deleteProjectDiscipline(req: NextRequest, projectId: string, disciplineCode: string, user: any) {
     try {
-      const updatedProject = await this.projectService.deleteProjectDiscipline(projectId, disciplineCode);
+      const companyId = this.getCompanyId(user);
+      const updatedProject = await this.projectService.deleteProjectDiscipline(projectId, disciplineCode, companyId);
       return NextResponse.json({ success: true, data: updatedProject });
     } catch (err: any) {
       console.error('[ProjectController] deleteProjectDiscipline error:', err);
@@ -93,7 +112,8 @@ export class ProjectController {
     try {
       const { searchParams } = new URL(req.url);
       const disciplineCode = searchParams.get('discipline') || undefined;
-      const drawings = await this.projectService.getProjectDrawings(projectId, disciplineCode);
+      const companyId = this.getCompanyId(user);
+      const drawings = await this.projectService.getProjectDrawings(projectId, disciplineCode, companyId);
       return NextResponse.json({ success: true, data: drawings });
     } catch (err: any) {
       console.error('[ProjectController] getProjectDrawings error:', err);
@@ -152,7 +172,8 @@ export class ProjectController {
   // --- FOLDERS CONTROLLER METHODS ---
   async getProjectFolders(req: NextRequest, projectId: string, user: any) {
     try {
-      const result = await this.projectService.getProjectFolders(projectId);
+      const companyId = this.getCompanyId(user);
+      const result = await this.projectService.getProjectFolders(projectId, companyId);
       return NextResponse.json({ success: true, data: result.folders, project: result.project });
     } catch (err: any) {
       console.error('[ProjectController] getProjectFolders error:', err);
@@ -166,13 +187,14 @@ export class ProjectController {
       if (!body.name) {
         return NextResponse.json({ success: false, message: 'Folder name is required.' }, { status: 400 });
       }
+      const companyId = this.getCompanyId(user);
       const folder = await this.projectService.createFolder({
         projectId,
         parentFolderId: body.parentFolderId || null,
         name: body.name,
         folderType: body.folderType || 'CUSTOM',
         createdBy: user?.name || user?.email || 'User'
-      });
+      }, companyId);
       return NextResponse.json({ success: true, data: folder });
     } catch (err: any) {
       console.error('[ProjectController] createFolder error:', err);
@@ -209,9 +231,11 @@ export class ProjectController {
 
   async initProjectFolderHierarchy(req: NextRequest, projectId: string, user: any) {
     try {
+      const companyId = this.getCompanyId(user);
       const folders = await this.projectService.initProjectFolderHierarchy(
         projectId,
-        user?.name || user?.email || 'System'
+        user?.name || user?.email || 'System',
+        companyId
       );
       return NextResponse.json({ success: true, data: folders });
     } catch (err: any) {
@@ -225,7 +249,8 @@ export class ProjectController {
     try {
       const { searchParams } = new URL(req.url);
       const folderId = searchParams.get('folderId') || undefined;
-      const files = await this.projectService.getProjectFiles(projectId, folderId);
+      const companyId = this.getCompanyId(user);
+      const files = await this.projectService.getProjectFiles(projectId, folderId, companyId);
       return NextResponse.json({ success: true, data: files });
     } catch (err: any) {
       console.error('[ProjectController] getProjectFiles error:', err);
@@ -242,6 +267,7 @@ export class ProjectController {
           message: 'folderId, fileName, and filePath are required.'
         }, { status: 400 });
       }
+      const companyId = this.getCompanyId(user);
       const file = await this.projectService.createProjectFile({
         projectId,
         folderId: body.folderId,
@@ -250,7 +276,7 @@ export class ProjectController {
         fileType: body.fileType,
         fileSize: body.fileSize,
         uploadedBy: user?.name || user?.email || 'User'
-      });
+      }, companyId);
       return NextResponse.json({ success: true, data: file });
     } catch (err: any) {
       console.error('[ProjectController] createProjectFile error:', err);

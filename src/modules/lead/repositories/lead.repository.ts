@@ -51,7 +51,18 @@ export class LeadRepository {
 
   async findCategoryByCode(code: string): Promise<ProjectCategoryModel | null> {
     const repo = await this.getCategoryRepo();
-    return await repo.findOne({ where: { code } });
+    return await repo
+      .createQueryBuilder('category')
+      .where('LOWER(TRIM(category.code)) = LOWER(TRIM(:code))', { code })
+      .getOne();
+  }
+
+  async findCategoryByName(name: string): Promise<ProjectCategoryModel | null> {
+    const repo = await this.getCategoryRepo();
+    return await repo
+      .createQueryBuilder('category')
+      .where('LOWER(TRIM(category.name)) = LOWER(TRIM(:name))', { name })
+      .getOne();
   }
 
   async createCategory(categoryData: Partial<ProjectCategoryModel>): Promise<ProjectCategoryModel> {
@@ -126,6 +137,14 @@ export class LeadRepository {
   async createLead(leadData: Partial<LeadModel>): Promise<LeadModel> {
     const repo = await this.getLeadRepo();
     const lead = repo.create(leadData);
+    return await repo.save(lead);
+  }
+
+  async updateLead(id: number, leadData: Partial<LeadModel>): Promise<LeadModel | null> {
+    const repo = await this.getLeadRepo();
+    const lead = await repo.findOne({ where: { id } });
+    if (!lead) return null;
+    Object.assign(lead, leadData);
     return await repo.save(lead);
   }
 

@@ -89,27 +89,28 @@ export class ClientRepository {
     return await repo.count();
   }
 
-  async getNextClientCode(): Promise<string> {
+  async getNextClientCode(year: number = new Date().getFullYear()): Promise<string> {
     const repo = await this.getClientRepo();
-    const clients = await repo.find();
-    const year = new Date().getFullYear();
-    let maxNum = 0;
+    const prefix = `CL-${year}-`;
+    const clients = await repo
+      .createQueryBuilder('client')
+      .select('client.clientCode', 'clientCode')
+      .where('client.clientCode LIKE :pattern', { pattern: `${prefix}%` })
+      .getRawMany();
+
+    let maxSeq = 0;
     for (const c of clients) {
-      if (!c.clientCode) continue;
-      const matchYear = c.clientCode.match(new RegExp(`^CL-${year}-(\\d+)$`));
-      if (matchYear) {
-        const num = parseInt(matchYear[1], 10);
-        if (num > maxNum) maxNum = num;
-      } else {
-        const matchAny = c.clientCode.match(/^CL-(?:[0-9]{4}-)?(\d+)$/);
-        if (matchAny) {
-          const num = parseInt(matchAny[1], 10);
-          if (num > maxNum) maxNum = num;
+      const parts = (c.clientCode || '').split('-');
+      if (parts.length >= 3) {
+        const seqNum = parseInt(parts[2], 10);
+        if (!isNaN(seqNum) && seqNum > maxSeq) {
+          maxSeq = seqNum;
         }
       }
     }
-    const seq = String(maxNum + 1).padStart(3, '0');
-    return `CL-${year}-${seq}`;
+
+    const nextSeq = String(maxSeq + 1).padStart(3, '0');
+    return `CL-${year}-${nextSeq}`;
   }
 
   async create(data: Partial<ClientModel>): Promise<ClientModel> {

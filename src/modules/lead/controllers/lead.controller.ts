@@ -201,4 +201,25 @@ export class LeadController {
       return NextResponse.json({ success: false, message: err.message }, { status });
     }
   }
+
+  async convertLeadToClient(req: NextRequest, id: number, user: any) {
+    try {
+      const userContext = {
+        companyId: user.companyId || '',
+        branchId: user.branchId || null,
+        role: user.role,
+        userId: user.userId || user.companyId || user.branchId || 'system'
+      };
+
+      const result = await this.leadService.convertLeadToClient(id, userContext);
+      return NextResponse.json({
+        success: true,
+        message: 'Lead converted to Client successfully.',
+        data: result
+      });
+    } catch (err: any) {
+      const status = err.message.includes('Unauthorized') ? 403 : err.message.includes('not found') ? 404 : 400;
+      return NextResponse.json({ success: false, message: err.message }, { status });
+    }
+  }
 }

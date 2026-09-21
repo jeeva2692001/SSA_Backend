@@ -52,7 +52,7 @@ export class LeadModel {
   @Column({ type: 'varchar', nullable: true })
   projectSubType?: string;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Column({ name: 'category', type: 'varchar', nullable: true })
   leadCategory?: string;
 
   @Column({ type: 'text', nullable: true })
