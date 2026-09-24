@@ -48,7 +48,8 @@ export class AuthService {
       throw new Error('Invalid Username or Password.');
     }
 
-    const mustChange = !!company.isFirstLogin;
+    // Temporarily bypass first-time login OTP verification to prevent interruption
+    const mustChange = false; // !!company.isFirstLogin;
     if (mustChange) {
       const { otpService } = await import('./otp.service');
       const otpResult = await otpService.createAndSendOtp(
@@ -120,7 +121,8 @@ export class AuthService {
         throw new Error('Invalid Username or Password.');
       }
 
-      const mustChange = user.role !== 'Super Admin' && !!user.isFirstLogin;
+      // Temporarily bypass first-time login OTP verification to prevent interruption
+      const mustChange = false; // user.role !== 'Super Admin' && !!user.isFirstLogin;
       if (mustChange) {
         const { otpService } = await import('./otp.service');
         const otpResult = await otpService.createAndSendOtp(
@@ -194,7 +196,8 @@ export class AuthService {
         throw new Error('Invalid Username or Password.');
       }
 
-      const mustChange = !!company.isFirstLogin;
+      // Temporarily bypass first-time login OTP verification to prevent interruption
+      const mustChange = false; // !!company.isFirstLogin;
       if (mustChange) {
         const { otpService } = await import('./otp.service');
         const otpResult = await otpService.createAndSendOtp(
@@ -268,7 +271,8 @@ export class AuthService {
         throw new Error('Invalid Username or Password.');
       }
 
-      const mustChange = !!branch.isFirstLogin;
+      // Temporarily bypass first-time login OTP verification to prevent interruption
+      const mustChange = false; // !!branch.isFirstLogin;
       if (mustChange) {
         const { otpService } = await import('./otp.service');
         const otpResult = await otpService.createAndSendOtp(
@@ -695,7 +699,7 @@ export class AuthService {
   async branchLogin(username: string, password: string): Promise<{ user: any; token: string }> {
     const dataSource = await getDataSource();
     const branchRepo = dataSource.getRepository(BranchModel);
-    
+
     // Find branch by branchId or code
     let branch = await branchRepo.findOne({ where: { branchId: username } });
     if (!branch) {
@@ -829,7 +833,7 @@ export class AuthService {
     if (user?.email) {
       aliasEmail = user.email;
     } else {
-      const company = await this.companyRepository.findByContactPerson(trimmed).catch(() => null) 
+      const company = await this.companyRepository.findByContactPerson(trimmed).catch(() => null)
         || await this.companyRepository.findByCompanyId(trimmed).catch(() => null);
       if (company?.email) {
         aliasEmail = company.email;
