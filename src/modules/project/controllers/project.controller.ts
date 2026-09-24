@@ -15,7 +15,7 @@ export class ProjectController {
     try {
       const { searchParams } = new URL(req.url);
       const companyId = this.getCompanyId(user, searchParams);
-      const projects = await this.projectService.getAllProjects(companyId);
+      const projects = await this.projectService.getAllProjects(companyId, user);
       return NextResponse.json({ success: true, data: projects });
     } catch (err: any) {
       console.error('[ProjectController] getProjects error:', err);
@@ -55,6 +55,17 @@ export class ProjectController {
     } catch (err: any) {
       console.error('[ProjectController] getProjectById error:', err);
       return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  async deleteProject(req: NextRequest, projectId: string, user: any) {
+    try {
+      const companyId = this.getCompanyId(user);
+      await this.projectService.deleteProject(projectId, companyId);
+      return NextResponse.json({ success: true, message: 'Project deleted successfully' });
+    } catch (err: any) {
+      console.error('[ProjectController] deleteProject error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 400 });
     }
   }
 
@@ -117,6 +128,18 @@ export class ProjectController {
       return NextResponse.json({ success: true, data: drawings });
     } catch (err: any) {
       console.error('[ProjectController] getProjectDrawings error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  async createProjectDrawing(req: NextRequest, projectId: string, user: any) {
+    try {
+      const body = await req.json();
+      const companyId = this.getCompanyId(user);
+      const drawing = await this.projectService.createProjectDrawing(projectId, body, companyId);
+      return NextResponse.json({ success: true, data: drawing });
+    } catch (err: any) {
+      console.error('[ProjectController] createProjectDrawing error:', err);
       return NextResponse.json({ success: false, message: err.message }, { status: 500 });
     }
   }
@@ -275,6 +298,8 @@ export class ProjectController {
         filePath: body.filePath,
         fileType: body.fileType,
         fileSize: body.fileSize,
+        tagLine: body.tagLine,
+        tags: body.tags,
         uploadedBy: user?.name || user?.email || 'User'
       }, companyId);
       return NextResponse.json({ success: true, data: file });
@@ -287,10 +312,15 @@ export class ProjectController {
   async renameProjectFile(req: NextRequest, fileId: string, user: any) {
     try {
       const body = await req.json();
-      if (!body.fileName) {
-        return NextResponse.json({ success: false, message: 'fileName is required.' }, { status: 400 });
+      if (!body.fileName && body.tagLine === undefined && body.tags === undefined) {
+        return NextResponse.json({ success: false, message: 'fileName, tagLine, or tags is required.' }, { status: 400 });
       }
-      const updated = await this.projectService.renameProjectFile(fileId, body.fileName);
+      const updates: any = {};
+      if (body.fileName) updates.fileName = body.fileName.trim();
+      if (body.tagLine !== undefined) updates.tagLine = body.tagLine ? body.tagLine.trim() : null;
+      if (body.tags !== undefined) updates.tags = body.tags ? body.tags.trim() : null;
+
+      const updated = await this.projectService.updateProjectFile(fileId, updates);
       return NextResponse.json({ success: true, data: updated });
     } catch (err: any) {
       console.error('[ProjectController] renameProjectFile error:', err);
@@ -307,6 +337,32 @@ export class ProjectController {
       return NextResponse.json({ success: true, message: 'File deleted successfully.' });
     } catch (err: any) {
       console.error('[ProjectController] deleteProjectFile error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  async handleFileApprovalAction(req: NextRequest, fileId: string, user: any) {
+    try {
+      const body = await req.json();
+      if (!body.action) {
+        return NextResponse.json({ success: false, message: 'Approval action is required.' }, { status: 400 });
+      }
+
+      const updatedFile = await this.projectService.handleFileApprovalAction(
+        fileId,
+        body.action,
+        {
+          name: user?.name || user?.userId || 'User',
+          role: user?.role || 'User',
+          email: user?.email,
+          userId: user?.userId
+        },
+        body.notes
+      );
+
+      return NextResponse.json({ success: true, data: updatedFile });
+    } catch (err: any) {
+      console.error('[ProjectController] handleFileApprovalAction error:', err);
       return NextResponse.json({ success: false, message: err.message }, { status: 500 });
     }
   }

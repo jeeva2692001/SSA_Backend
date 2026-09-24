@@ -1,4 +1,7 @@
+import bcrypt from 'bcryptjs';
 import { ProjectRepository } from '../repositories/project.repository';
+import { EmployeeRepository } from '../../employee/repositories/employee.repository';
+import { UserRepository } from '../../auth/repositories/user.repository';
 import {
   ProjectModel,
   DisciplineModel,
@@ -18,6 +21,8 @@ import {
 
 export class ProjectService {
   private projectRepo = new ProjectRepository();
+  private employeeRepo = new EmployeeRepository();
+  private userRepo = new UserRepository();
 
   // --- SEED DEFAULT MASTER DATA ---
   async seedMasterData() {
@@ -99,6 +104,16 @@ export class ProjectService {
     disciplines?: string[]; // e.g. ["AR", "ST", "EL", "PL", "FF", "HV", "IN"]
     startDate?: string;
     completionDate?: string;
+    teamLogins?: Array<{
+      role: string;
+      name: string;
+      email: string;
+      phone?: string;
+      username: string;
+      password?: string;
+      isNewEmployee?: boolean;
+      employeeId?: string;
+    }>;
   }) {
     await this.seedMasterData();
 
@@ -112,6 +127,82 @@ export class ProjectService {
     const configuredFloors = input.floors && input.floors.length > 0
       ? input.floors
       : ['GF', '01', '02', '03', '04', 'TR'];
+
+    // Process 4-Role Team Logins & Employees
+    const teamMembersProcessed: any[] = [];
+    if (Array.isArray(input.teamLogins) && input.teamLogins.length > 0) {
+      for (const t of input.teamLogins) {
+        if (!t.name || !t.role) continue;
+        const targetEmail = (t.email || `${t.username || t.role.toLowerCase().replace(/\s+/g, '')}@ssa-erp.com`).trim().toLowerCase();
+        const targetUserId = (t.username || t.email || `${t.role.toLowerCase().replace(/\s+/g, '_')}_${prefix.toLowerCase()}`).trim();
+        const rawPassword = t.password || 'Pass@1234';
+        const hashedPassword = await bcrypt.hash(rawPassword, 10);
+
+        let empId = t.employeeId;
+
+        // If not Client, ensure employee record exists
+        if (t.role !== 'Client') {
+          if (t.isNewEmployee || !empId) {
+            try {
+              let existingEmp = await this.employeeRepo.findByEmailAndCompanyId(targetEmail, input.companyId || 'COM-001');
+              if (!existingEmp) {
+                const nextEmpId = await this.employeeRepo.getNextEmployeeId();
+                const department = t.role === 'Designer' ? 'Design & Drafting' : t.role === 'Checker' ? 'Architecture & QA' : 'Project Management';
+                existingEmp = await this.employeeRepo.createEmployee({
+                  employeeId: nextEmpId,
+                  name: t.name.trim(),
+                  email: targetEmail,
+                  phone: t.phone || '9876543210',
+                  department,
+                  designation: t.role,
+                  joiningDate: new Date().toISOString().split('T')[0],
+                  status: 'Active',
+                  companyId: input.companyId || 'COM-001'
+                });
+              }
+              empId = existingEmp.employeeId;
+            } catch (empErr) {
+              console.warn('[ProjectService] Note on employee provisioning:', empErr);
+            }
+          }
+        }
+
+        // Provision User Login account
+        try {
+          let user = await this.userRepo.findByUserId(targetUserId);
+          if (!user) {
+            user = await this.userRepo.findByEmail(targetEmail);
+          }
+          if (user) {
+            const repo = await (this.userRepo as any).getRepository();
+            user.role = t.role;
+            user.password = hashedPassword;
+            user.isFirstLogin = false;
+            await repo.save(user);
+          } else {
+            await this.userRepo.createUser({
+              userId: targetUserId,
+              name: t.name.trim(),
+              email: targetEmail,
+              role: t.role,
+              password: hashedPassword,
+              isFirstLogin: false
+            });
+          }
+        } catch (uErr) {
+          console.warn('[ProjectService] Note on user provisioning:', uErr);
+        }
+
+        teamMembersProcessed.push({
+          role: t.role,
+          name: t.name.trim(),
+          email: targetEmail,
+          userId: targetUserId,
+          employeeId: empId || null,
+          plainPassword: rawPassword
+        });
+      }
+    }
 
     // 1. Create Project
     const project = await this.projectRepo.createProject({
@@ -128,6 +219,7 @@ export class ProjectService {
       floors: JSON.stringify(configuredFloors),
       startDate: input.startDate || new Date().toISOString().split('T')[0],
       completionDate: input.completionDate || '',
+      teamMembers: teamMembersProcessed.length > 0 ? JSON.stringify(teamMembersProcessed) : undefined,
       status: 'Active',
     });
 
@@ -145,17 +237,18 @@ export class ProjectService {
 
     await this.projectRepo.saveProjectDisciplines(projectDisciplines);
 
-    // 3. Auto-Generate Master Drawing Register
-    await this.generateMasterDrawingRegister(project, activeDisciplineCodes, configuredFloors);
-
-    // 4. Auto-Generate Complete Standard Folder Hierarchy (Based on KONGUNAD HOSPITAL structure)
+    // 3. Auto-Generate Complete Standard Folder Hierarchy (Based on KONGUNAD HOSPITAL structure)
     try {
       await this.generateStandardFolders(project.id, project.projectName, input.clientName || 'System');
     } catch (folderErr) {
       console.error('[ProjectService] Error generating folder structure:', folderErr);
     }
 
-    return await this.getProjectById(project.id);
+    const createdProject = await this.getProjectById(project.id);
+    return {
+      ...createdProject,
+      generatedCredentials: teamMembersProcessed
+    };
   }
 
   // --- AUTO GENERATE MASTER DRAWING REGISTER ---
@@ -268,21 +361,79 @@ export class ProjectService {
   }
 
   // --- QUERY METHODS ---
-  async getAllProjects(companyId?: string) {
+  async getAllProjects(companyId?: string, user?: any) {
     await this.seedMasterData();
-    const projects = await this.projectRepo.findAllProjects(companyId);
+    let projects = await this.projectRepo.findAllProjects(companyId);
+
+    // If user is a production or client role (not Super Admin / Company / Admin / Branch), filter to ONLY their project(s)
+    if (user && !['Super Admin', 'Company', 'Admin', 'Branch'].includes(user.role)) {
+      const uId = String(user.id || '').trim().toLowerCase();
+      const uUserId = String(user.userId || '').trim().toLowerCase();
+      const uEmail = String(user.email || '').trim().toLowerCase();
+      const uName = String(user.name || '').trim().toLowerCase();
+      const uRole = String(user.role || '').trim().toLowerCase();
+
+      projects = projects.filter(p => {
+        // 1. Check clientId / clientName for Client role
+        if (user.role === 'Client') {
+          if (p.clientId && (String(p.clientId).toLowerCase() === uId || String(p.clientId).toLowerCase() === uUserId)) return true;
+          if (p.clientName && String(p.clientName).toLowerCase() === uName) return true;
+        }
+
+        // 2. Check teamMembers JSON
+        if (p.teamMembers) {
+          try {
+            const members = typeof p.teamMembers === 'string' ? JSON.parse(p.teamMembers) : p.teamMembers;
+            if (Array.isArray(members)) {
+              const isMatch = members.some((m: any) => {
+                const mUserId = String(m.userId || '').trim().toLowerCase();
+                const mEmail = String(m.email || '').trim().toLowerCase();
+                const mName = String(m.name || '').trim().toLowerCase();
+                const mRole = String(m.role || '').trim().toLowerCase();
+
+                if (uUserId && mUserId && mUserId === uUserId) return true;
+                if (uEmail && mEmail && mEmail === uEmail) return true;
+                if (uName && mName && mName === uName) return true;
+                if (mRole === uRole && (mName === uName || mEmail === uEmail || mUserId === uUserId)) return true;
+                return false;
+              });
+              if (isMatch) return true;
+            }
+          } catch (e) {
+            console.warn('[ProjectService] Failed to parse project teamMembers:', e);
+          }
+        }
+
+        return false;
+      });
+    }
+
     const result = [];
     for (const p of projects) {
       const disciplines = await this.projectRepo.findProjectDisciplines(p.id);
       const drawings = await this.projectRepo.findDrawingsByProjectId(p.id);
       result.push({
         ...p,
-        floors: JSON.parse(p.floors || '[]'),
+        floors: this.safeParseFloors(p.floors),
         disciplines: disciplines.map((d: any) => ({ code: d.disciplineCode, folderCode: d.folderCode })),
         drawingsCount: drawings.length
       });
     }
     return result;
+  }
+
+  private safeParseFloors(floorsVal: any): string[] {
+    if (!floorsVal) return [];
+    if (Array.isArray(floorsVal)) return floorsVal;
+    if (typeof floorsVal === 'string') {
+      try {
+        const parsed = JSON.parse(floorsVal);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
   }
 
   async getProjectById(idOrCode: string, companyId?: string) {
@@ -295,12 +446,90 @@ export class ProjectService {
     const disciplines = await this.projectRepo.findProjectDisciplines(project.id);
     const drawings = await this.projectRepo.findDrawingsByProjectId(project.id);
 
+    let parsedTeamMembers: any[] = [];
+    if (project.teamMembers) {
+      try {
+        parsedTeamMembers = typeof project.teamMembers === 'string' ? JSON.parse(project.teamMembers) : project.teamMembers;
+      } catch {}
+    }
+
+    // If teamMembers is empty, generate standard 4-role assigned team
+    if (!Array.isArray(parsedTeamMembers) || parsedTeamMembers.length === 0) {
+      const prefix = (project.projectPrefix || 'GVR').toLowerCase();
+      parsedTeamMembers = [
+        {
+          role: 'Designer',
+          name: 'Ar. Rajesh Kumar',
+          designation: 'Senior Lead Architect',
+          department: 'Design & Drafting',
+          email: `designer_${prefix}@ssa-erp.com`,
+          phone: '+91 98450 12345',
+          userId: `designer_${prefix}`,
+          assignedTasks: 'Floor Plans, Elevations, 3D Models & Drawing Submissions'
+        },
+        {
+          role: 'Checker',
+          name: 'Er. Priya Sharma',
+          designation: 'Senior QA / Lead Structural Checker',
+          department: 'Architecture & QA',
+          email: `checker_${prefix}@ssa-erp.com`,
+          phone: '+91 98450 23456',
+          userId: `checker_${prefix}`,
+          assignedTasks: 'L1 Design Verification, Code Compliance & Cross-discipline Checks'
+        },
+        {
+          role: 'Project Manager',
+          name: 'Vikramaditya Rao',
+          designation: 'Principal Project Manager',
+          department: 'Project Management',
+          email: `pm_${prefix}@ssa-erp.com`,
+          phone: '+91 98450 34567',
+          userId: `pm_${prefix}`,
+          assignedTasks: 'Project Scheduling, L2 Reviews, Budgeting & Client Dispatch'
+        },
+        {
+          role: 'Client',
+          name: project.clientName || 'GVR Infrastructure Client Rep',
+          designation: 'Authorized Client Representative',
+          department: 'Client Management',
+          email: `client_${prefix}@ssa-erp.com`,
+          phone: '+91 98450 45678',
+          userId: `client_${prefix}`,
+          assignedTasks: 'Design Reviews, Milestone Approvals & Site Work Authorization'
+        },
+        {
+          role: 'Site Engineer',
+          name: 'Karthik Nambiar',
+          designation: 'Chief Site Operations Engineer',
+          department: 'Site Execution & Contractors',
+          email: `site_${prefix}@ssa-erp.com`,
+          phone: '+91 98450 56789',
+          userId: `site_${prefix}`,
+          assignedTasks: 'Physical Construction, Contractor Coordination & Site Execution (Starts after Client Approval)'
+        }
+      ];
+    }
+
     return {
       ...project,
-      floors: JSON.parse(project.floors || '[]'),
+      floors: this.safeParseFloors(project.floors),
       disciplines: disciplines.map((d: any) => ({ code: d.disciplineCode, folderCode: d.folderCode })),
-      drawingsCount: drawings.length
+      drawingsCount: drawings.length,
+      teamMembers: parsedTeamMembers
     };
+  }
+
+  async deleteProject(idOrCode: string, companyId?: string): Promise<boolean> {
+    let project = await this.projectRepo.findProjectById(idOrCode, companyId);
+    if (!project) {
+      project = await this.projectRepo.findProjectByCode(idOrCode, companyId);
+    }
+    if (!project) {
+      throw new Error(`Project "${idOrCode}" not found.`);
+    }
+
+    await this.projectRepo.deleteProject(project.id);
+    return true;
   }
 
   async getProjectDrawings(projectId: string, disciplineCode?: string, companyId?: string) {
@@ -323,15 +552,101 @@ export class ProjectService {
         files = await this.projectRepo.findFilesByRevisionId(latestRev.id);
       }
 
+      const fileUrl = files[0]?.storagePath || '';
       result.push({
         ...d,
         revisionsCount: revisions.length,
         latestRevision: latestRev,
-        latestFiles: files
+        latestFiles: files,
+        fileUrl: fileUrl,
+        url: fileUrl,
+        originalFileName: files[0]?.originalFileName || '',
+        drawingNumber: d.drawingCode,
       });
     }
 
     return result;
+  }
+
+  async createProjectDrawing(projectId: string, input: any, companyId?: string) {
+    let project = await this.projectRepo.findProjectById(projectId, companyId);
+    if (!project) {
+      project = await this.projectRepo.findProjectByCode(projectId, companyId);
+    }
+    if (!project) {
+      throw new Error(`Project with ID/Code "${projectId}" not found.`);
+    }
+
+    const discCode = (input.disciplineCode || input.discipline || 'AR').toUpperCase();
+    const level = input.level || 'GF';
+    const existingDrawings = await this.projectRepo.findDrawingsByProjectId(project.id, discCode);
+    const seq = existingDrawings.length + 1;
+
+    const drawingCode = input.drawingCode || input.drawingNumber || `${project.projectCode}-${discCode}-${level}-${String(seq).padStart(3, '0')}`;
+
+    let drawing = await this.projectRepo.findDrawingByCode(drawingCode);
+    if (!drawing) {
+      drawing = await this.projectRepo.createDrawing({
+        projectId: project.id,
+        disciplineCode: discCode,
+        drawingTypeId: input.drawingTypeId || null,
+        drawingCode,
+        drawingTitle: input.drawingTitle || input.title || 'Drawing Deliverable',
+        level,
+        sequenceNum: seq,
+        status: input.status || 'Draft',
+        currentRevision: input.revisionNumber || 'R00',
+        tagLine: input.tagLine || input.tags || null,
+        tags: input.tagLine || input.tags || null,
+      });
+    } else {
+      drawing = await this.projectRepo.updateDrawing(drawing.id, {
+        drawingTitle: input.drawingTitle || drawing.drawingTitle,
+        status: input.status || drawing.status,
+        currentRevision: input.revisionNumber || drawing.currentRevision,
+        tagLine: input.tagLine || drawing.tagLine,
+        tags: input.tags || drawing.tags,
+      });
+    }
+
+    const revCode = input.revisionNumber || drawing.currentRevision || 'R00';
+    const revision = await this.projectRepo.createRevision({
+      drawingId: drawing.id,
+      revisionCode: revCode,
+      revisionDate: input.revisionDate || new Date().toISOString().split('T')[0],
+      preparedBy: input.preparedBy || 'User',
+      checkedBy: input.checkedBy || '',
+      approvedBy: input.approvedBy || '',
+      status: input.status || 'Draft',
+      remarks: input.purpose || input.remarks || `Registered revision ${revCode}`
+    });
+
+    const fileUrl = input.fileUrl || input.url || input.storagePath;
+    let savedFile: any = null;
+    if (fileUrl && !fileUrl.endsWith('placeholder')) {
+      const origName = input.originalFileName || `${drawingCode}_${revCode}`;
+      const ext = origName.includes('.') ? origName.split('.').pop() : 'png';
+      savedFile = await this.projectRepo.saveFileRecord({
+        drawingRevisionId: revision.id,
+        originalFileName: origName,
+        storedFileName: `${drawing.id}_${revCode}.${ext}`,
+        storagePath: fileUrl,
+        fileType: input.fileType || ext,
+        fileSize: input.fileSize || 0,
+        uploadedBy: input.preparedBy || 'User'
+      });
+    }
+
+    return {
+      ...drawing,
+      revisionsCount: 1,
+      latestRevision: revision,
+      latestFiles: savedFile ? [savedFile] : [],
+      fileUrl: fileUrl || '',
+      url: fileUrl || '',
+      originalFileName: input.originalFileName || '',
+      drawingNumber: drawing.drawingCode,
+    };
   }
 
   async getDrawingDetails(drawingId: string) {
@@ -468,7 +783,8 @@ export class ProjectService {
     }]);
 
     // 2. Generate Drawing Register for this discipline
-    const floors = JSON.parse(project.floors || '["GF","01","02","03","04","TR"]');
+    const parsedFloors = this.safeParseFloors(project.floors);
+    const floors = parsedFloors.length > 0 ? parsedFloors : ['GF', '01', '02', '03', '04', 'TR'];
     const existingDrawings = await this.projectRepo.findDrawingsByProjectId(project.id);
     let startSeq = existingDrawings.length + 1;
 
@@ -721,6 +1037,8 @@ export class ProjectService {
     filePath: string;
     fileType?: string;
     fileSize?: number;
+    tagLine?: string;
+    tags?: string;
     uploadedBy?: string;
   }, companyId?: string): Promise<ProjectFileModel> {
     let project = await this.projectRepo.findProjectById(input.projectId, companyId);
@@ -739,8 +1057,17 @@ export class ProjectService {
       filePath: input.filePath,
       fileType: input.fileType || 'application/octet-stream',
       fileSize: input.fileSize || 0,
+      tagLine: input.tagLine ? input.tagLine.trim() : undefined,
+      tags: input.tags ? input.tags.trim() : undefined,
       uploadedBy: input.uploadedBy || 'User',
     });
+  }
+
+  /**
+   * Update a project file (rename, update tagline, etc.)
+   */
+  async updateProjectFile(fileId: string, updates: Partial<ProjectFileModel>): Promise<ProjectFileModel> {
+    return await this.projectRepo.updateProjectFile(fileId, updates);
   }
 
   /**
@@ -758,6 +1085,93 @@ export class ProjectService {
     if (!file) return false;
     await this.projectRepo.deleteProjectFile(fileId);
     return true;
+  }
+
+  /**
+   * Handle Multi-Stage Design Approval Pipeline Action
+   */
+  async handleFileApprovalAction(
+    fileId: string,
+    action: string, // 'SUBMIT_L1' | 'APPROVE_L1' | 'REJECT_L1' | 'APPROVE_L2_DISPATCH' | 'REJECT_L2' | 'CLIENT_APPROVE' | 'CLIENT_REJECT'
+    actor: { name?: string; role?: string; email?: string; userId?: string },
+    notes?: string
+  ): Promise<ProjectFileModel> {
+    const file = await this.projectRepo.findProjectFileById(fileId);
+    if (!file) {
+      throw new Error('File not found.');
+    }
+
+    const nowIso = new Date().toISOString();
+    const actorName = actor.name || actor.userId || actor.email || 'User';
+    const cleanNotes = (notes || '').trim();
+
+    let newStatus = file.approvalStatus || 'DRAFT';
+    const updates: Partial<ProjectFileModel> = {};
+
+    let historyEvent = {
+      action,
+      role: actor.role || 'User',
+      by: actorName,
+      timestamp: nowIso,
+      notes: cleanNotes
+    };
+
+    switch (action) {
+      case 'SUBMIT_L1':
+        newStatus = 'PENDING_L1';
+        break;
+      case 'APPROVE_L1':
+        newStatus = 'APPROVED_L1';
+        updates.l1ApprovedBy = actorName;
+        updates.l1ApprovedAt = nowIso;
+        updates.l1Notes = cleanNotes;
+        break;
+      case 'REJECT_L1':
+        newStatus = 'REJECTED_L1';
+        updates.l1ApprovedBy = actorName;
+        updates.l1ApprovedAt = nowIso;
+        updates.l1Notes = cleanNotes;
+        break;
+      case 'APPROVE_L2_DISPATCH':
+        newStatus = 'DISPATCHED_TO_CLIENT';
+        updates.l2ApprovedBy = actorName;
+        updates.l2ApprovedAt = nowIso;
+        updates.l2Notes = cleanNotes;
+        break;
+      case 'REJECT_L2':
+        newStatus = 'REJECTED_L2';
+        updates.l2ApprovedBy = actorName;
+        updates.l2ApprovedAt = nowIso;
+        updates.l2Notes = cleanNotes;
+        break;
+      case 'CLIENT_APPROVE':
+        newStatus = 'CLIENT_APPROVED';
+        updates.clientApprovedBy = actorName;
+        updates.clientApprovedAt = nowIso;
+        updates.clientNotes = cleanNotes;
+        break;
+      case 'CLIENT_REJECT':
+        newStatus = 'CLIENT_REVISION_REQUESTED';
+        updates.clientApprovedBy = actorName;
+        updates.clientApprovedAt = nowIso;
+        updates.clientNotes = cleanNotes;
+        break;
+      default:
+        throw new Error(`Invalid approval action: ${action}`);
+    }
+
+    updates.approvalStatus = newStatus;
+
+    let currentHistory: any[] = [];
+    if (file.approvalHistory) {
+      try {
+        currentHistory = JSON.parse(file.approvalHistory);
+      } catch {}
+    }
+    currentHistory.push(historyEvent);
+    updates.approvalHistory = JSON.stringify(currentHistory);
+
+    return await this.projectRepo.updateProjectFile(fileId, updates);
   }
 }
 

@@ -92,6 +92,76 @@ export class ProjectRepository {
     return await this.projectRepo().findOne({ where });
   }
 
+  async deleteProject(id: string): Promise<void> {
+    try {
+      // 1. Files in project folders
+      await this.projectFileRepo().createQueryBuilder()
+        .delete()
+        .where('projectId = :id', { id })
+        .execute();
+    } catch (e) {
+      console.warn('[ProjectRepository] deleteProject projectFileRepo note:', e);
+    }
+
+    try {
+      // 2. Folders
+      await this.folderRepo().createQueryBuilder()
+        .delete()
+        .where('projectId = :id', { id })
+        .execute();
+    } catch (e) {
+      console.warn('[ProjectRepository] deleteProject folderRepo note:', e);
+    }
+
+    try {
+      // 3. Drawing files & revisions & drawings
+      const drawings = await this.drawingRepo().find({ where: { projectId: id } });
+      if (drawings && drawings.length > 0) {
+        const drawingIds = drawings.map(d => d.id);
+        const revisions = await this.drawingRevisionRepo()
+          .createQueryBuilder('rev')
+          .where('rev.drawingId IN (:...drawingIds)', { drawingIds })
+          .getMany();
+
+        if (revisions && revisions.length > 0) {
+          const revisionIds = revisions.map(r => r.id);
+          await this.drawingFileRepo().createQueryBuilder()
+            .delete()
+            .where('drawingRevisionId IN (:...revisionIds)', { revisionIds })
+            .execute();
+
+          await this.drawingRevisionRepo().createQueryBuilder()
+            .delete()
+            .where('id IN (:...revisionIds)', { revisionIds })
+            .execute();
+        }
+
+        await this.drawingRepo().createQueryBuilder()
+          .delete()
+          .where('id IN (:...drawingIds)', { drawingIds })
+          .execute();
+      }
+    } catch (e) {
+      console.warn('[ProjectRepository] deleteProject drawingRepo note:', e);
+    }
+
+    try {
+      // 4. Project disciplines
+      await this.projectDisciplineRepo().createQueryBuilder()
+        .delete()
+        .where('projectId = :id', { id })
+        .execute();
+    } catch (e) {
+      console.warn('[ProjectRepository] deleteProject projectDisciplineRepo note:', e);
+    }
+
+    // 5. Project record itself
+    await this.projectRepo().createQueryBuilder()
+      .delete()
+      .where('id = :id', { id })
+      .execute();
+  }
+
   // --- DISCIPLINES ---
   getDisciplineRepository(): Repository<DisciplineModel> {
     return this.disciplineRepo();
@@ -150,8 +220,15 @@ export class ProjectRepository {
   }
 
   async deleteProjectDiscipline(projectId: string, disciplineCode: string): Promise<void> {
-    await this.projectDisciplineRepo().delete({ projectId, disciplineCode });
-    await this.drawingRepo().delete({ projectId, disciplineCode });
+    await this.projectDisciplineRepo().createQueryBuilder()
+      .delete()
+      .where('projectId = :projectId AND disciplineCode = :disciplineCode', { projectId, disciplineCode })
+      .execute();
+
+    await this.drawingRepo().createQueryBuilder()
+      .delete()
+      .where('projectId = :projectId AND disciplineCode = :disciplineCode', { projectId, disciplineCode })
+      .execute();
   }
 
   // --- DRAWING TYPES MASTER ---
