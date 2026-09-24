@@ -42,6 +42,12 @@ export class DrawingModel {
   @Column({ type: 'varchar', default: 'R00' })
   currentRevision!: string; // R00, R01, R02
 
+  @Column({ type: 'varchar', nullable: true })
+  tagLine?: string; // e.g. "Bedroom Design", "Hall Design", "Kitchen Interior"
+
+  @Column({ type: 'varchar', nullable: true })
+  tags?: string;
+
   @Column({ type: 'boolean', default: false })
   coordinationFlag!: boolean; // Set to true if upstream architecture drawing was revised
 

@@ -10,3 +10,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return await projectController.getProjectDrawings(req, resolvedParams.id, user);
   });
 }
+
+export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
+  return await authMiddleware(req, async (user: any) => {
+    return await projectController.createProjectDrawing(req, resolvedParams.id, user);
+  });
+}

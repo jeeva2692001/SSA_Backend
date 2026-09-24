@@ -45,35 +45,54 @@ export async function POST(req: NextRequest) {
       const isImageOrPdf = file.type.startsWith('image/') || file.type === 'application/pdf' || /\.(png|jpg|jpeg|webp|gif|svg|pdf)$/i.test(file.name);
       const resourceType = isImageOrPdf ? 'auto' : 'raw';
 
-      const cloudinaryInstance = getCloudinary();
+      let fileUrl = '';
+      let publicId = '';
 
-      // Upload to Cloudinary using stream into designated folder
-      const result = await new Promise<any>((resolve, reject) => {
-        cloudinaryInstance.uploader.upload_stream(
-          {
-            resource_type: resourceType,
-            folder: targetFolder,
-            use_filename: true,
-            unique_filename: true,
-          },
-          (error, result) => {
-            if (error) {
-              console.error('[UploadRoute] Cloudinary upload error:', error);
-              reject(error);
-            } else {
-              resolve(result);
+      try {
+        const cloudinaryInstance = getCloudinary();
+        // Upload to Cloudinary using stream into designated folder
+        const result = await new Promise<any>((resolve, reject) => {
+          cloudinaryInstance.uploader.upload_stream(
+            {
+              resource_type: resourceType,
+              folder: targetFolder,
+              use_filename: true,
+              unique_filename: true,
+            },
+            (error, result) => {
+              if (error) {
+                console.error('[UploadRoute] Cloudinary upload error:', error);
+                reject(error);
+              } else {
+                resolve(result);
+              }
             }
-          }
-        ).end(buffer);
-      });
+          ).end(buffer);
+        });
+
+        fileUrl = result.secure_url || result.url;
+        publicId = result.public_id;
+      } catch (cloudErr) {
+        console.warn('[UploadRoute] Cloudinary failed, saving to local public/uploads directory:', cloudErr);
+        const uploadsDir = path.join(process.cwd(), 'public', 'uploads', targetFolder);
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const filePath = path.join(uploadsDir, safeName);
+        fs.writeFileSync(filePath, buffer);
+        fileUrl = `/uploads/${targetFolder}/${safeName}`;
+        publicId = safeName;
+      }
 
       return NextResponse.json({
         success: true,
-        url: result.secure_url,
+        url: fileUrl,
+        secure_url: fileUrl,
         name: file.name,
         size: file.size,
         type: file.type,
-        publicId: result.public_id,
+        publicId: publicId,
         folder: targetFolder,
       });
     } catch (err: any) {

@@ -44,6 +44,9 @@ export class ProjectModel {
   @Column({ type: 'varchar', nullable: true })
   completionDate?: string;
 
+  @Column({ type: 'text', nullable: true })
+  teamMembers?: string; // JSON string array of assigned project team members
+
   @Column({ type: 'varchar', default: 'Active' })
   status!: string;
 

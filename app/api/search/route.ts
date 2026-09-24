@@ -6,6 +6,23 @@ import { LeadModel } from '../../../src/modules/lead/models/lead.model';
 import { ProjectModel } from '../../../src/modules/project/models/project.model';
 import { ClientModel } from '../../../src/modules/client/models/client.model';
 import { EmployeeModel } from '../../../src/modules/employee/models/employee.model';
+import { ProjectFileModel } from '../../../src/modules/project/models/project-file.model';
+
+function matchesQuery(fields: (string | undefined | null)[], qLower: string, tokens: string[]): boolean {
+  const combined = fields.filter(Boolean).join(' ').toLowerCase();
+  if (!combined) return false;
+
+  // 1. Exact / substring match of full query phrase
+  if (combined.includes(qLower)) return true;
+
+  // 2. All tokens present in the combined text (e.g. "bedroom" and "design")
+  if (tokens.length > 1 && tokens.every(tok => combined.includes(tok))) return true;
+
+  // 3. At least one significant token match if search query is complex
+  if (tokens.length > 1 && tokens.some(tok => tok.length >= 3 && combined.includes(tok))) return true;
+
+  return false;
+}
 
 export async function GET(req: NextRequest) {
   return await authMiddleware(req, async (user: any) => {
@@ -24,12 +41,14 @@ export async function GET(req: NextRequest) {
             projects: [],
             clients: [],
             employees: [],
+            files: [],
             allResults: []
           }
         });
       }
 
       const qLower = query.toLowerCase();
+      const tokens = qLower.split(/\s+/).filter(Boolean);
       const ds = await getDataSource();
 
       const drawingRepo = ds.getRepository(DrawingModel);
@@ -37,107 +56,36 @@ export async function GET(req: NextRequest) {
       const projectRepo = ds.getRepository(ProjectModel);
       const clientRepo = ds.getRepository(ClientModel);
       const employeeRepo = ds.getRepository(EmployeeModel);
+      const fileRepo = ds.getRepository(ProjectFileModel);
 
       const companyId = user.companyId || (user.role === 'Super Admin' ? undefined : user.id);
       const branchId = user.branchId;
 
-      // 1. Search Drawings
-      const allDrawings = await drawingRepo.find({
-        relations: { project: true, drawingType: true }
-      });
-      const matchingDrawings = allDrawings
-        .filter((d: DrawingModel) => {
-          const projectMatch = !companyId || d.project?.companyId === companyId;
-          if (!projectMatch) return false;
-
-          const title = (d.drawingTitle || '').toLowerCase();
-          const code = (d.drawingCode || '').toLowerCase();
-          const disc = (d.disciplineCode || '').toLowerCase();
-          const status = (d.status || '').toLowerCase();
-          const projName = (d.project?.projectName || '').toLowerCase();
-          const projCode = (d.project?.projectCode || '').toLowerCase();
-
-          return (
-            title.includes(qLower) ||
-            code.includes(qLower) ||
-            disc.includes(qLower) ||
-            status.includes(qLower) ||
-            projName.includes(qLower) ||
-            projCode.includes(qLower)
-          );
-        })
-        .slice(0, 8)
-        .map((d: DrawingModel) => ({
-          id: d.id,
-          type: 'drawing' as const,
-          title: d.drawingTitle || d.drawingCode,
-          subtitle: `${d.drawingCode} • ${d.project?.projectName || 'Project'} • ${d.level || 'GF'}`,
-          status: d.status || 'Draft',
-          discipline: d.disciplineCode,
-          projectId: d.projectId || d.project?.id || d.project?.projectCode,
-          projectCode: d.project?.projectCode,
-          projectName: d.project?.projectName,
-          url: `/crm/drawings`
-        }));
-
-      // 2. Search Leads
-      const leadWhere: any = {};
-      if (companyId) leadWhere.companyId = companyId;
-      if (branchId) leadWhere.branchId = branchId;
-      const allLeads = await leadRepo.find({ where: leadWhere });
-      const matchingLeads = allLeads
-        .filter((l: LeadModel) => {
-          const leadId = (l.leadId || '').toLowerCase();
-          const title = (l.leadTitle || '').toLowerCase();
-          const company = (l.company || '').toLowerCase();
-          const contact = (l.contactPerson || '').toLowerCase();
-          const email = (l.email || '').toLowerCase();
-          const mobile = (l.mobile || '').toLowerCase();
-          const type = (l.projectType || '').toLowerCase();
-          const status = (l.status || '').toLowerCase();
-
-          return (
-            leadId.includes(qLower) ||
-            title.includes(qLower) ||
-            company.includes(qLower) ||
-            contact.includes(qLower) ||
-            email.includes(qLower) ||
-            mobile.includes(qLower) ||
-            type.includes(qLower) ||
-            status.includes(qLower)
-          );
-        })
-        .slice(0, 8)
-        .map((l: LeadModel) => ({
-          id: String(l.id),
-          type: 'lead' as const,
-          title: l.leadTitle || l.company || l.leadId,
-          subtitle: `${l.leadId} • ${l.contactPerson || l.company || 'Lead'} • ${l.projectType || 'General'}`,
-          status: l.status || 'Lead',
-          url: `/crm/leads`
-        }));
-
-      // 3. Search Projects
+      // 1. Search Projects First (to build allowed project map)
       const projectWhere: any = {};
       if (companyId) projectWhere.companyId = companyId;
       const allProjects = await projectRepo.find({ where: projectWhere });
+      const allowedProjectIds = new Set(allProjects.map(p => p.id));
+      const projectMap = new Map(allProjects.map(p => [p.id, p]));
+
       const matchingProjects = allProjects
         .filter((p: ProjectModel) => {
-          const name = (p.projectName || '').toLowerCase();
-          const code = (p.projectCode || '').toLowerCase();
-          const client = (p.clientName || '').toLowerCase();
-          const type = (p.projectType || '').toLowerCase();
-          const status = (p.status || '').toLowerCase();
-
-          return (
-            name.includes(qLower) ||
-            code.includes(qLower) ||
-            client.includes(qLower) ||
-            type.includes(qLower) ||
-            status.includes(qLower)
+          return matchesQuery(
+            [
+              p.projectName,
+              p.projectCode,
+              p.clientName,
+              p.projectType,
+              p.status,
+              (p as any).description,
+              (p as any).location,
+              (p as any).category
+            ],
+            qLower,
+            tokens
           );
         })
-        .slice(0, 8)
+        .slice(0, 10)
         .map((p: ProjectModel) => ({
           id: p.id,
           type: 'project' as const,
@@ -151,29 +99,148 @@ export async function GET(req: NextRequest) {
           url: `/crm/drawings`
         }));
 
-      // 4. Search Clients
+      // 2. Search Drawings (including tagLine, tags, level, drawingType)
+      const allDrawings = await drawingRepo.find({
+        relations: { project: true, drawingType: true }
+      });
+      const matchingDrawings = allDrawings
+        .filter((d: DrawingModel) => {
+          const proj = d.project || (d.projectId ? projectMap.get(d.projectId) : undefined);
+          if (companyId && d.projectId && !allowedProjectIds.has(d.projectId) && d.project?.companyId !== companyId) {
+            return false;
+          }
+
+          return matchesQuery(
+            [
+              d.drawingTitle,
+              d.drawingCode,
+              d.disciplineCode,
+              d.tagLine,
+              d.tags,
+              d.status,
+              d.level,
+              d.drawingType?.title,
+              d.drawingType?.code,
+              proj?.projectName,
+              proj?.projectCode,
+              proj?.clientName,
+              d.coordinationNote
+            ],
+            qLower,
+            tokens
+          );
+        })
+        .slice(0, 12)
+        .map((d: DrawingModel) => {
+          const proj = d.project || (d.projectId ? projectMap.get(d.projectId) : undefined);
+          const tagInfo = d.tagLine || d.tags;
+          return {
+            id: d.id,
+            type: 'drawing' as const,
+            title: d.drawingTitle || d.drawingCode,
+            subtitle: `${d.drawingCode} • ${proj?.projectName || 'Project'} • ${d.level || 'GF'}${tagInfo ? ` • [${tagInfo}]` : ''}`,
+            status: d.status || 'Draft',
+            discipline: d.disciplineCode,
+            projectId: d.projectId || proj?.id || proj?.projectCode,
+            projectCode: proj?.projectCode,
+            projectName: proj?.projectName,
+            url: `/crm/drawings`
+          };
+        });
+
+      // 3. Search Project Files (uploaded drawing files with tags/tagLine)
+      let matchingFiles: any[] = [];
+      try {
+        const allFiles = await fileRepo.find();
+        matchingFiles = allFiles
+          .filter((f: ProjectFileModel) => {
+            if (companyId && f.projectId && !allowedProjectIds.has(f.projectId)) {
+              return false;
+            }
+            return matchesQuery(
+              [f.fileName, f.tagLine, f.tags, f.approvalStatus, f.uploadedBy, f.fileType],
+              qLower,
+              tokens
+            );
+          })
+          .slice(0, 8)
+          .map((f: ProjectFileModel) => {
+            const proj = f.projectId ? projectMap.get(f.projectId) : undefined;
+            const tagInfo = f.tagLine || f.tags;
+            return {
+              id: f.id,
+              type: 'drawing' as const,
+              title: f.fileName,
+              subtitle: `File • ${proj?.projectName || 'Project'} • ${f.approvalStatus || 'Draft'}${tagInfo ? ` • [${tagInfo}]` : ''}`,
+              status: f.approvalStatus || 'Active',
+              projectId: f.projectId,
+              projectCode: proj?.projectCode,
+              projectName: proj?.projectName,
+              url: `/crm/drawings`
+            };
+          });
+      } catch (fileErr) {
+        console.warn('File search skipped or table not initialized:', fileErr);
+      }
+
+      // 4. Search Leads
+      const leadWhere: any = {};
+      if (companyId) leadWhere.companyId = companyId;
+      if (branchId) leadWhere.branchId = branchId;
+      const allLeads = await leadRepo.find({ where: leadWhere });
+      const matchingLeads = allLeads
+        .filter((l: LeadModel) => {
+          return matchesQuery(
+            [
+              l.leadId,
+              l.leadTitle,
+              l.company,
+              l.contactPerson,
+              l.email,
+              l.mobile,
+              l.projectType,
+              l.status,
+              (l as any).city,
+              (l as any).location,
+              (l as any).requirements,
+              (l as any).scope,
+              (l as any).notes
+            ],
+            qLower,
+            tokens
+          );
+        })
+        .slice(0, 8)
+        .map((l: LeadModel) => ({
+          id: String(l.id),
+          type: 'lead' as const,
+          title: l.leadTitle || l.company || l.leadId,
+          subtitle: `${l.leadId} • ${l.contactPerson || l.company || 'Lead'} • ${l.projectType || 'General'}`,
+          status: l.status || 'Lead',
+          url: `/crm/leads`
+        }));
+
+      // 5. Search Clients
       const clientWhere: any = {};
       if (companyId) clientWhere.companyId = companyId;
       if (branchId) clientWhere.branchId = branchId;
       const allClients = await clientRepo.find({ where: clientWhere });
       const matchingClients = allClients
         .filter((c: ClientModel) => {
-          const code = (c.clientCode || '').toLowerCase();
-          const name = (c.clientName || '').toLowerCase();
-          const comp = (c.company || '').toLowerCase();
-          const contact = (c.contactPerson || '').toLowerCase();
-          const email = (c.email || '').toLowerCase();
-          const phone = (c.mobile || c.alternatePhone || '').toLowerCase();
-          const city = (c.city || '').toLowerCase();
-
-          return (
-            code.includes(qLower) ||
-            name.includes(qLower) ||
-            comp.includes(qLower) ||
-            contact.includes(qLower) ||
-            email.includes(qLower) ||
-            phone.includes(qLower) ||
-            city.includes(qLower)
+          return matchesQuery(
+            [
+              c.clientCode,
+              c.clientName,
+              c.company,
+              c.contactPerson,
+              c.email,
+              c.mobile,
+              c.alternatePhone,
+              c.city,
+              c.address
+            ],
+            qLower,
+            tokens
           );
         })
         .slice(0, 8)
@@ -186,26 +253,16 @@ export async function GET(req: NextRequest) {
           url: `/crm/clients`
         }));
 
-      // 5. Search Employees
+      // 6. Search Employees
       const employeeWhere: any = {};
       if (branchId) employeeWhere.branchId = branchId;
       const allEmployees = await employeeRepo.find({ where: employeeWhere });
       const matchingEmployees = allEmployees
         .filter((e: EmployeeModel) => {
-          const empId = (e.employeeId || '').toLowerCase();
-          const name = (e.name || '').toLowerCase();
-          const email = (e.email || '').toLowerCase();
-          const phone = (e.phone || '').toLowerCase();
-          const dept = (e.department || '').toLowerCase();
-          const desig = (e.designation || '').toLowerCase();
-
-          return (
-            empId.includes(qLower) ||
-            name.includes(qLower) ||
-            email.includes(qLower) ||
-            phone.includes(qLower) ||
-            dept.includes(qLower) ||
-            desig.includes(qLower)
+          return matchesQuery(
+            [e.employeeId, e.name, e.email, e.phone, e.department, e.designation],
+            qLower,
+            tokens
           );
         })
         .slice(0, 8)
@@ -218,8 +275,11 @@ export async function GET(req: NextRequest) {
           url: `/employees/list`
         }));
 
+      // Combine drawings and matching file records under drawing/files
+      const combinedDrawings = [...matchingDrawings, ...matchingFiles];
+
       const allResults = [
-        ...matchingDrawings,
+        ...combinedDrawings,
         ...matchingLeads,
         ...matchingProjects,
         ...matchingClients,
@@ -233,7 +293,7 @@ export async function GET(req: NextRequest) {
         data: {
           query,
           totalCount,
-          drawings: matchingDrawings,
+          drawings: combinedDrawings,
           leads: matchingLeads,
           projects: matchingProjects,
           clients: matchingClients,
