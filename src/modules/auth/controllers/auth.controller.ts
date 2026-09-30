@@ -114,7 +114,8 @@ export class AuthController {
           role: 'Company',
           contactPerson: currentUser.contactPerson,
           status: currentUser.status,
-          mustChangePassword: !!currentUser.isFirstLogin,
+          // [FEATURE PAUSED] Re-enable in future: mustChangePassword: !!currentUser.isFirstLogin,
+          mustChangePassword: false,
         };
         return NextResponse.json(companyResponse, { status: 200 });
       }
@@ -129,7 +130,8 @@ export class AuthController {
           manager: currentUser.manager,
           status: currentUser.status,
           companyId: currentUser.companyId,
-          mustChangePassword: !!currentUser.isFirstLogin,
+          // [FEATURE PAUSED] Re-enable in future: mustChangePassword: !!currentUser.isFirstLogin,
+          mustChangePassword: false,
         };
         return NextResponse.json(branchResponse, { status: 200 });
       }
@@ -141,7 +143,8 @@ export class AuthController {
         email: currentUser.email,
         role: currentUser.role,
         avatar: currentUser.avatar,
-        mustChangePassword: currentUser.role === 'Super Admin' ? false : (currentUser.isFirstLogin ?? false),
+        // [FEATURE PAUSED] Re-enable in future: mustChangePassword: currentUser.role === 'Super Admin' ? false : (currentUser.isFirstLogin ?? false),
+        mustChangePassword: false,
       };
       return NextResponse.json(userResponse, { status: 200 });
     } catch (error: any) {

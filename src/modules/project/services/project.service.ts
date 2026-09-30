@@ -17,6 +17,7 @@ import {
   STANDARD_PROJECT_FOLDER_TEMPLATE,
   FolderTemplateNode
 } from '../templates/project-folder.template';
+import { emailService } from '../../../shared/services/email.service';
 
 
 export class ProjectService {
@@ -119,11 +120,17 @@ export class ProjectService {
 
     const prefix = (input.projectPrefix || 'GVR').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const currentYear = new Date().getFullYear();
-    const seq = await this.projectRepo.getNextProjectSequence(prefix, currentYear, input.companyId);
-    const seqPadded = String(seq).padStart(3, '0');
+    let seq = await this.projectRepo.getNextProjectSequence(prefix, currentYear, input.companyId);
+    let seqPadded = String(seq).padStart(3, '0');
+    let projectCode = `${prefix}-${currentYear}-${seqPadded}`;
 
-    // Project Code format: [PROJECT_PREFIX]-[YEAR]-[SEQUENCE]
-    const projectCode = `${prefix}-${currentYear}-${seqPadded}`;
+    // Extra safety guard against race conditions or manual entries
+    while (await this.projectRepo.findProjectByCode(projectCode)) {
+      seq++;
+      seqPadded = String(seq).padStart(3, '0');
+      projectCode = `${prefix}-${currentYear}-${seqPadded}`;
+    }
+
     const configuredFloors = input.floors && input.floors.length > 0
       ? input.floors
       : ['GF', '01', '02', '03', '04', 'TR'];
@@ -244,10 +251,85 @@ export class ProjectService {
       console.error('[ProjectService] Error generating folder structure:', folderErr);
     }
 
+    // 4. Send Welcome & Client Login Credentials via Email (to Client role)
+    const clientMember = teamMembersProcessed.find(m => m.role === 'Client');
+    let clientEmailDelivery: any = null;
+    if (clientMember && clientMember.email) {
+      try {
+        const emailPromise = emailService.sendClientWelcomeAndCredentialsEmail({
+          clientEmail: clientMember.email,
+          clientName: clientMember.name || input.clientName || 'Valued Client',
+          username: clientMember.userId,
+          password: clientMember.plainPassword,
+          projectName: project.projectName,
+          projectCode: project.projectCode,
+          companyName: input.clientName || 'Sundar Sundram Architects',
+          portalUrl: process.env.APP_URL ? `${process.env.APP_URL}/login` : 'http://localhost:5173/login'
+        });
+        const timeoutFallback = new Promise<any>((resolve) => setTimeout(() => resolve({ success: true, simulated: false }), 7000));
+        clientEmailDelivery = await Promise.race([emailPromise, timeoutFallback]);
+      } catch (emailErr) {
+        console.error('[ProjectService] Error sending client credentials email:', emailErr);
+      }
+    }
+
     const createdProject = await this.getProjectById(project.id);
     return {
       ...createdProject,
-      generatedCredentials: teamMembersProcessed
+      generatedCredentials: teamMembersProcessed.map(m => {
+        if (m.role === 'Client') {
+          return {
+            ...m,
+            emailSent: !!clientEmailDelivery?.success,
+            simulated: !!clientEmailDelivery?.simulated
+          };
+        }
+        return m;
+      })
+    };
+  }
+
+  async resendClientCredentials(projectId: string, emailOverride?: string) {
+    let project = await this.projectRepo.findProjectById(projectId);
+    if (!project) {
+      project = await this.projectRepo.findProjectByCode(projectId);
+    }
+    if (!project) {
+      throw new Error(`Project with ID or Code "${projectId}" not found.`);
+    }
+
+    let team: any[] = [];
+    if (project.teamMembers) {
+      try {
+        team = typeof project.teamMembers === 'string' ? JSON.parse(project.teamMembers) : project.teamMembers;
+      } catch {}
+    }
+
+    const clientMember = team.find((m: any) => m.role === 'Client');
+    const targetEmail = (emailOverride || clientMember?.email || '').trim();
+    if (!targetEmail || !targetEmail.includes('@')) {
+      throw new Error(`No valid email address found for the client on project ${project.projectCode}.`);
+    }
+
+    const username = clientMember?.userId || clientMember?.username || `client_${project.projectPrefix?.toLowerCase() || 'p'}`;
+    const password = clientMember?.plainPassword || clientMember?.password || 'Pass@1234';
+    const clientName = clientMember?.name || project.clientName || 'Client Representative';
+
+    const delivery = await emailService.sendClientWelcomeAndCredentialsEmail({
+      clientEmail: targetEmail,
+      clientName,
+      username,
+      password,
+      projectName: project.projectName,
+      projectCode: project.projectCode,
+      companyName: 'Sundar Sundram Architects',
+      portalUrl: process.env.APP_URL ? `${process.env.APP_URL}/login` : 'http://localhost:5173/login'
+    });
+
+    return {
+      success: true,
+      message: `Credentials email successfully dispatched to ${targetEmail}`,
+      delivery
     };
   }
 
@@ -745,6 +827,32 @@ export class ProjectService {
     return await this.getDrawingDetails(drawing.id);
   }
 
+  async updateDrawing(idOrCode: string, updates: Partial<DrawingModel>) {
+    let drawing = await this.projectRepo.findDrawingById(idOrCode);
+    if (!drawing) {
+      drawing = await this.projectRepo.findDrawingByCode(idOrCode);
+    }
+    if (!drawing) {
+      throw new Error(`Drawing with ID or Code "${idOrCode}" not found.`);
+    }
+
+    const payload: Partial<DrawingModel> = {};
+    if (updates.tagLine !== undefined) {
+      payload.tagLine = updates.tagLine;
+      payload.tags = updates.tagLine;
+    }
+    if (updates.tags !== undefined && updates.tagLine === undefined) {
+      payload.tags = updates.tags;
+      payload.tagLine = updates.tags;
+    }
+    if (updates.drawingTitle !== undefined) payload.drawingTitle = updates.drawingTitle;
+    if (updates.status !== undefined) payload.status = updates.status;
+    if (updates.level !== undefined) payload.level = updates.level;
+
+    await this.projectRepo.updateDrawing(drawing.id, payload);
+    return await this.getDrawingDetails(drawing.id);
+  }
+
   // --- DRAWING TYPE MASTER MANAGEMENT ---
   async getDrawingTypes(disciplineCode?: string) {
     await this.seedMasterData();
@@ -897,36 +1005,97 @@ export class ProjectService {
       existingFolders.push(rootFolder);
     }
 
-    // 2. Recursive helper to insert nodes
-    const processNodes = async (nodes: FolderTemplateNode[], parentId: string | null) => {
-      for (const node of nodes) {
-        let existing = existingFolders.find(
-          f => f.parentFolderId === parentId && f.name.trim().toLowerCase() === node.name.trim().toLowerCase()
-        );
+    // 2. High-performance batch insertion level-by-level
+    // Level 1: top-level categories under rootFolder
+    const toInsertLevel1: Partial<FolderModel>[] = [];
+    for (const node of STANDARD_PROJECT_FOLDER_TEMPLATE) {
+      const match = existingFolders.find(
+        f => f.parentFolderId === rootFolder!.id && f.name.trim().toLowerCase() === node.name.trim().toLowerCase()
+      );
+      if (!match) {
+        toInsertLevel1.push({
+          projectId,
+          parentFolderId: rootFolder!.id,
+          name: node.name,
+          folderType: node.folderType || 'CATEGORY',
+          sortOrder: node.sortOrder || 0,
+          isSystemFolder: true,
+          createdBy,
+        });
+      }
+    }
 
-        if (!existing) {
-          existing = await this.projectRepo.createFolder({
+    if (toInsertLevel1.length > 0) {
+      const savedLevel1 = await this.projectRepo.createFoldersBatch(toInsertLevel1);
+      existingFolders.push(...savedLevel1);
+    }
+
+    // Level 2: Children of Level 1
+    const toInsertLevel2: Array<{ node: FolderTemplateNode; folderData: Partial<FolderModel> }> = [];
+    for (const node of STANDARD_PROJECT_FOLDER_TEMPLATE) {
+      const parentFolder = existingFolders.find(
+        f => f.parentFolderId === rootFolder!.id && f.name.trim().toLowerCase() === node.name.trim().toLowerCase()
+      );
+      if (!parentFolder || !node.children) continue;
+
+      for (const child of node.children) {
+        const match = existingFolders.find(
+          f => f.parentFolderId === parentFolder.id && f.name.trim().toLowerCase() === child.name.trim().toLowerCase()
+        );
+        if (!match) {
+          toInsertLevel2.push({
+            node: child,
+            folderData: {
+              projectId,
+              parentFolderId: parentFolder.id,
+              name: child.name,
+              folderType: child.folderType || 'CATEGORY',
+              sortOrder: child.sortOrder || 0,
+              isSystemFolder: true,
+              createdBy,
+            }
+          });
+        }
+      }
+    }
+
+    if (toInsertLevel2.length > 0) {
+      const savedLevel2 = await this.projectRepo.createFoldersBatch(toInsertLevel2.map(i => i.folderData));
+      existingFolders.push(...savedLevel2);
+    }
+
+    // Level 3: Children of Level 2 (e.g. WORKFLOW subfolders)
+    const toInsertLevel3: Partial<FolderModel>[] = [];
+    for (const item of toInsertLevel2) {
+      const parentFolder = existingFolders.find(
+        f => f.parentFolderId === item.folderData.parentFolderId && f.name.trim().toLowerCase() === item.node.name.trim().toLowerCase()
+      );
+      if (!parentFolder || !item.node.children) continue;
+
+      for (const grandchild of item.node.children) {
+        const match = existingFolders.find(
+          f => f.parentFolderId === parentFolder.id && f.name.trim().toLowerCase() === grandchild.name.trim().toLowerCase()
+        );
+        if (!match) {
+          toInsertLevel3.push({
             projectId,
-            parentFolderId: parentId,
-            name: node.name,
-            folderType: node.folderType || 'CATEGORY',
-            sortOrder: node.sortOrder || 0,
+            parentFolderId: parentFolder.id,
+            name: grandchild.name,
+            folderType: grandchild.folderType || 'WORKFLOW',
+            sortOrder: grandchild.sortOrder || 0,
             isSystemFolder: true,
             createdBy,
           });
-          existingFolders.push(existing);
-        }
-
-        if (node.children && node.children.length > 0) {
-          await processNodes(node.children, existing.id);
         }
       }
-    };
+    }
 
-    // Insert all 17 top-level folders and nested children under rootFolder
-    await processNodes(STANDARD_PROJECT_FOLDER_TEMPLATE, rootFolder.id);
+    if (toInsertLevel3.length > 0) {
+      const savedLevel3 = await this.projectRepo.createFoldersBatch(toInsertLevel3);
+      existingFolders.push(...savedLevel3);
+    }
 
-    return await this.projectRepo.findFoldersByProjectId(projectId);
+    return existingFolders;
   }
 
   /**

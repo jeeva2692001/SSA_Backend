@@ -10,3 +10,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return await projectController.getDrawingDetails(req, resolvedParams.id, user);
   });
 }
+
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
+  return await authMiddleware(req, async (user: any) => {
+    return await projectController.updateDrawing(req, resolvedParams.id, user);
+  });
+}
+
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = await params;
+  return await authMiddleware(req, async (user: any) => {
+    return await projectController.updateDrawing(req, resolvedParams.id, user);
+  });
+}

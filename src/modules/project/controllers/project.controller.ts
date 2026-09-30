@@ -58,6 +58,17 @@ export class ProjectController {
     }
   }
 
+  async resendClientCredentials(req: NextRequest, projectId: string, user: any) {
+    try {
+      const body = await req.json().catch(() => ({}));
+      const result = await this.projectService.resendClientCredentials(projectId, body?.email);
+      return NextResponse.json(result);
+    } catch (err: any) {
+      console.error('[ProjectController] resendClientCredentials error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
   async deleteProject(req: NextRequest, projectId: string, user: any) {
     try {
       const companyId = this.getCompanyId(user);
@@ -150,6 +161,17 @@ export class ProjectController {
       return NextResponse.json({ success: true, data: drawing });
     } catch (err: any) {
       console.error('[ProjectController] getDrawingDetails error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  async updateDrawing(req: NextRequest, drawingId: string, user: any) {
+    try {
+      const body = await req.json();
+      const updated = await this.projectService.updateDrawing(drawingId, body);
+      return NextResponse.json({ success: true, data: updated });
+    } catch (err: any) {
+      console.error('[ProjectController] updateDrawing error:', err);
       return NextResponse.json({ success: false, message: err.message }, { status: 500 });
     }
   }
