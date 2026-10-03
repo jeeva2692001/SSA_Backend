@@ -2,6 +2,133 @@ import { LeadRepository } from '../repositories/lead.repository';
 import { LeadModel } from '../models/lead.model';
 import { ClientRepository } from '../../client/repositories/client.repository';
 
+export const DEFAULT_CATEGORY_TAGLINES: Record<string, string[]> = {
+  RESIDENTIAL: [
+    'Master Bedroom',
+    'Bedroom Design',
+    'Living Room',
+    'Hall Design',
+    'Kitchen Interior',
+    'Dining Area',
+    'Balcony / Terrace',
+    'Pooja Room',
+    'False Ceiling',
+    '3D Elevation',
+    '3D Render',
+    'Floor Plan',
+    'Electrical Layout',
+    'Plumbing Layout',
+    'Landscape Design',
+    'Section / Detail',
+    'Structural Detail',
+    'Bathroom Design'
+  ],
+  SCHOOLS: [
+    'Classroom Layout',
+    'Science Lab',
+    'Computer Lab',
+    'Library & Reading Hall',
+    'Auditorium / Assembly Hall',
+    'Indoor Sports Hall',
+    'Playground / Sports Ground',
+    'Principal / Admin Office',
+    'Staff Room',
+    'Cafeteria / Dining Hall',
+    'Student Restroom Block',
+    'Campus Master Plan',
+    'Main Entrance & Security Gate',
+    'Bus Bay & Drop-off Zone',
+    'Fire & Evacuation Plan',
+    'Multi-Purpose Hall (MPH)'
+  ],
+  HOSPITALS: [
+    'Emergency / Casualty',
+    'ICU / Critical Care Unit',
+    'Operation Theatre (OT) Complex',
+    'OPD Consultation Rooms',
+    'Inpatient Patient Ward',
+    'Private Patient Room',
+    'Radiology & Imaging (X-Ray / MRI)',
+    'Pathology Lab',
+    'Pharmacy & Medicine Store',
+    'Central Sterile Services (CSSD)',
+    'Doctors Lounge & Nurse Station',
+    'Hospital Reception & Waiting Lobby',
+    'Ambulance Bay & ER Ramp',
+    'Medical Gas Pipeline (MGPS) Plan',
+    'Mortuary',
+    'Biomedical Waste Area'
+  ],
+  COMMERCIAL: [
+    'Open Office Workstation Area',
+    'Executive Cabin / MD Office',
+    'Boardroom / Conference Room',
+    'Reception & Waiting Lounge',
+    'Breakout Zone & Pantry',
+    'Server & UPS Room',
+    'Retail Storefront & Showroom',
+    'Mall Atrium & Corridors',
+    'Food Court & Dining',
+    'Public Washroom Block',
+    'Central HVAC & Ducting Plan',
+    'Fire Sprinkler & Hydrant Plan',
+    'Multi-level Car Parking (MLCP)',
+    'Facade & Curtain Wall Detail'
+  ],
+  HOSPITALITY: [
+    'Deluxe Guest Room / Suite',
+    'Presidential Suite',
+    'Hotel Grand Lobby & Reception',
+    'All-Day Dining Restaurant',
+    'Banquet Hall & Ballroom',
+    'Commercial Kitchen / BOH',
+    'Bar & Lounge',
+    'Swimming Pool & Sun Deck',
+    'Spa & Wellness Center',
+    'Gymnasium & Fitness',
+    'Back of House & Staff Locker',
+    'Laundry & Linen Store',
+    'Resort Cottage / Villa Layout',
+    'Valet & Porch Entry'
+  ],
+  INDUSTRIAL: [
+    'Manufacturing / Production Hall',
+    'Raw Material Storage',
+    'Finished Goods Warehouse',
+    'Heavy Vehicle Loading Dock',
+    'Overhead Crane Gantry Section',
+    'Industrial Flooring Plan',
+    'Substation & Transformer Yard',
+    'Plant Manager & Admin Office',
+    'Workers Canteen & Locker',
+    'Effluent Treatment Plant (ETP)',
+    'Fire Safety & Hazardous Storage',
+    'Ventilation & Exhaust Detail'
+  ],
+  INSTITUTIONAL: [
+    'Lecture Hall / Amphitheatre',
+    'Seminar Hall',
+    'Community Hall / Sabha Gruha',
+    'Prayer / Meditation Hall',
+    'Student Hostel Block',
+    'Dining Hall & Mess',
+    'Central Library',
+    'Exhibition Gallery',
+    'Administration Building',
+    'Parking & Traffic Circulation'
+  ],
+  MIXED_USE: [
+    'Retail Podium Floor',
+    'Residential Tower Typical Floor',
+    'Office Tower Typical Floor',
+    'Mixed-Use Plaza & Landscaping',
+    'Basements & Parking Circulation',
+    'Transfer Slab Structural Detail',
+    'Service Core & Lift Bank',
+    'Sky Garden & Common Amenities'
+  ]
+};
+
 export class LeadService {
   private leadRepository: LeadRepository;
   private clientRepository: ClientRepository;
@@ -125,6 +252,138 @@ export class LeadService {
       throw new Error('Unauthorized: Only Company Admin or Super Admin can delete project categories.');
     }
     return await this.leadRepository.deleteCategory(id);
+  }
+
+  // ── Category Taglines Management ───────────────────────────────────────────
+  async getTaglines(categoryId?: number, categoryCode?: string) {
+    if (categoryId) {
+      return await this.leadRepository.findTaglinesByCategoryId(categoryId);
+    }
+    if (categoryCode) {
+      const cat = await this.leadRepository.findCategoryByCode(categoryCode);
+      if (cat) {
+        return await this.leadRepository.findTaglinesByCategoryId(cat.id);
+      }
+    }
+    return await this.leadRepository.findAllTaglines();
+  }
+
+  async createTagline(data: { categoryId: number; name: string; description?: string; displayOrder?: number }, userRole?: string) {
+    if (userRole && !['Company', 'Super Admin', 'Super Administrator', 'Admin', 'Branch'].includes(userRole)) {
+      throw new Error('Unauthorized: Insufficient permissions to create taglines.');
+    }
+    if (!data.name || !data.name.trim()) {
+      throw new Error('Tagline name is required.');
+    }
+    const cleanName = data.name.trim();
+    if (cleanName.length < 2) {
+      throw new Error('Tagline name must be at least 2 characters.');
+    }
+    if (cleanName.length > 100) {
+      throw new Error('Tagline name cannot exceed 100 characters.');
+    }
+    if (!data.categoryId) {
+      throw new Error('Category ID is required.');
+    }
+    const cat = await this.leadRepository.findCategoryById(data.categoryId);
+    if (!cat) {
+      throw new Error(`Category with ID ${data.categoryId} not found.`);
+    }
+
+    // Duplicate check within category
+    const existing = await this.leadRepository.findTaglinesByCategoryId(data.categoryId);
+    if (existing.some(t => t.name.toLowerCase() === cleanName.toLowerCase())) {
+      throw new Error(`Tagline "${cleanName}" already exists for category "${cat.name}".`);
+    }
+
+    return await this.leadRepository.createTagline({
+      categoryId: data.categoryId,
+      name: cleanName,
+      description: data.description?.trim(),
+      displayOrder: data.displayOrder ?? (existing.length + 1),
+      isActive: true
+    });
+  }
+
+  async updateTagline(id: number, data: { name?: string; categoryId?: number; description?: string; displayOrder?: number; isActive?: boolean }, userRole?: string) {
+    if (userRole && !['Company', 'Super Admin', 'Super Administrator', 'Admin', 'Branch'].includes(userRole)) {
+      throw new Error('Unauthorized: Insufficient permissions to update taglines.');
+    }
+    const existing = await this.leadRepository.findTaglineById(id);
+    if (!existing) {
+      throw new Error(`Tagline with ID ${id} not found.`);
+    }
+
+    const updates: any = {};
+    if (data.name !== undefined) {
+      const cleanName = data.name.trim();
+      if (!cleanName || cleanName.length < 2) {
+        throw new Error('Tagline name must be at least 2 characters.');
+      }
+      if (cleanName.length > 100) {
+        throw new Error('Tagline name cannot exceed 100 characters.');
+      }
+      const targetCatId = data.categoryId || existing.categoryId;
+      const allInCat = await this.leadRepository.findTaglinesByCategoryId(targetCatId);
+      if (allInCat.some(t => t.id !== id && t.name.toLowerCase() === cleanName.toLowerCase())) {
+        throw new Error(`Tagline "${cleanName}" already exists in this category.`);
+      }
+      updates.name = cleanName;
+    }
+
+    if (data.categoryId !== undefined) {
+      const cat = await this.leadRepository.findCategoryById(data.categoryId);
+      if (!cat) throw new Error(`Category with ID ${data.categoryId} not found.`);
+      updates.categoryId = data.categoryId;
+    }
+
+    if (data.description !== undefined) {
+      updates.description = data.description ? data.description.trim() : null;
+    }
+    if (data.displayOrder !== undefined) {
+      updates.displayOrder = data.displayOrder;
+    }
+    if (data.isActive !== undefined) {
+      updates.isActive = data.isActive;
+    }
+
+    return await this.leadRepository.updateTagline(id, updates);
+  }
+
+  async deleteTagline(id: number, userRole?: string) {
+    if (userRole && !['Company', 'Super Admin', 'Super Administrator', 'Admin', 'Branch'].includes(userRole)) {
+      throw new Error('Unauthorized: Insufficient permissions to delete taglines.');
+    }
+    const existing = await this.leadRepository.findTaglineById(id);
+    if (!existing) {
+      throw new Error(`Tagline with ID ${id} not found.`);
+    }
+    await this.leadRepository.deleteTagline(id);
+  }
+
+  async resetDefaultTaglines(categoryId?: number, userRole?: string) {
+    if (userRole && !['Company', 'Super Admin', 'Super Administrator', 'Admin'].includes(userRole)) {
+      throw new Error('Unauthorized: Only Administrators can reset default taglines.');
+    }
+    const categories = await this.leadRepository.findAllCategories();
+    const targets = categoryId ? categories.filter(c => c.id === categoryId) : categories;
+
+    for (const cat of targets) {
+      const defaults = DEFAULT_CATEGORY_TAGLINES[cat.code] || DEFAULT_CATEGORY_TAGLINES['RESIDENTIAL'] || [];
+      // Clean existing
+      await this.leadRepository.deleteTaglinesByCategoryId(cat.id);
+      // Create defaults
+      const itemsToCreate = defaults.map((tagName, idx) => ({
+        categoryId: cat.id,
+        name: tagName,
+        displayOrder: idx + 1,
+        isActive: true
+      }));
+      if (itemsToCreate.length > 0) {
+        await this.leadRepository.bulkCreateTaglines(itemsToCreate);
+      }
+    }
+    return await this.getTaglines(categoryId);
   }
 
   async getTemplateFields(categoryId: number) {

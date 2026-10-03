@@ -1,6 +1,7 @@
 import { getDataSource } from '../../../shared/config/data-source';
 import { LeadModel } from '../models/lead.model';
 import { ProjectCategoryModel } from '../models/project-category.model';
+import { CategoryTaglineModel } from '../models/category-tagline.model';
 import { CategoryTemplateFieldModel } from '../models/category-template-field.model';
 import { LeadRequirementValueModel } from '../models/lead-requirement-value.model';
 import { DeliverableTemplateModel } from '../models/deliverable-template.model';
@@ -16,6 +17,11 @@ export class LeadRepository {
   private async getCategoryRepo(): Promise<Repository<ProjectCategoryModel>> {
     const dataSource = await getDataSource();
     return dataSource.getRepository(ProjectCategoryModel);
+  }
+
+  private async getTaglineRepo(): Promise<Repository<CategoryTaglineModel>> {
+    const dataSource = await getDataSource();
+    return dataSource.getRepository(CategoryTaglineModel);
   }
 
   private async getFieldRepo(): Promise<Repository<CategoryTemplateFieldModel>> {
@@ -251,5 +257,58 @@ export class LeadRepository {
       where: { leadId },
       order: { id: 'ASC' }
     });
+  }
+
+  // Taglines
+  async findAllTaglines(): Promise<CategoryTaglineModel[]> {
+    const repo = await this.getTaglineRepo();
+    return await repo.find({
+      relations: { category: true },
+      order: { categoryId: 'ASC', displayOrder: 'ASC', name: 'ASC' }
+    });
+  }
+
+  async findTaglinesByCategoryId(categoryId: number): Promise<CategoryTaglineModel[]> {
+    const repo = await this.getTaglineRepo();
+    return await repo.find({
+      where: { categoryId },
+      relations: { category: true },
+      order: { displayOrder: 'ASC', name: 'ASC' }
+    });
+  }
+
+  async findTaglineById(id: number): Promise<CategoryTaglineModel | null> {
+    const repo = await this.getTaglineRepo();
+    return await repo.findOne({ where: { id }, relations: { category: true } });
+  }
+
+  async createTagline(taglineData: Partial<CategoryTaglineModel>): Promise<CategoryTaglineModel> {
+    const repo = await this.getTaglineRepo();
+    const item = repo.create(taglineData);
+    return await repo.save(item);
+  }
+
+  async bulkCreateTaglines(taglinesData: Partial<CategoryTaglineModel>[]): Promise<CategoryTaglineModel[]> {
+    const repo = await this.getTaglineRepo();
+    const items = repo.create(taglinesData);
+    return await repo.save(items);
+  }
+
+  async updateTagline(id: number, taglineData: Partial<CategoryTaglineModel>): Promise<CategoryTaglineModel> {
+    const repo = await this.getTaglineRepo();
+    const item = await repo.findOne({ where: { id } });
+    if (!item) throw new Error(`Tagline with ID ${id} not found.`);
+    Object.assign(item, taglineData);
+    return await repo.save(item);
+  }
+
+  async deleteTagline(id: number): Promise<void> {
+    const repo = await this.getTaglineRepo();
+    await repo.delete(id);
+  }
+
+  async deleteTaglinesByCategoryId(categoryId: number): Promise<void> {
+    const repo = await this.getTaglineRepo();
+    await repo.delete({ categoryId });
   }
 }
