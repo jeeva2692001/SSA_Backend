@@ -65,6 +65,9 @@ export class ClientModel {
   @Column({ type: 'text', nullable: true })
   remarks?: string;
 
+  @Column({ type: 'boolean', default: false })
+  enableReferencesFolder!: boolean;
+
   @CreateDateColumn()
   createdAt!: Date;
 

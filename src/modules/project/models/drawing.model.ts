@@ -37,7 +37,7 @@ export class DrawingModel {
   sequenceNum!: number;
 
   @Column({ type: 'varchar', default: 'Draft' })
-  status!: string; // Draft, Submitted, Under Review, Revision Required, Approved, Issued for Construction, Superseded, Rejected, On Hold, Cancelled, Coordination Required
+  status!: string; // Draft, Submitted, Under Review, Revision Required, Approved, Finalised, Issued for Construction, Superseded, Rejected, On Hold, Cancelled, Coordination Required
 
   @Column({ type: 'varchar', default: 'R00' })
   currentRevision!: string; // R00, R01, R02
