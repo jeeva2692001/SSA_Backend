@@ -58,6 +58,18 @@ export class ProjectController {
     }
   }
 
+  async updateProject(req: NextRequest, projectId: string, user: any) {
+    try {
+      const companyId = this.getCompanyId(user);
+      const body = await req.json();
+      const updated = await this.projectService.updateProject(projectId, body, companyId);
+      return NextResponse.json({ success: true, data: updated, message: 'Project updated successfully.' });
+    } catch (err: any) {
+      console.error('[ProjectController] updateProject error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
   async resendClientCredentials(req: NextRequest, projectId: string, user: any) {
     try {
       const body = await req.json().catch(() => ({}));
@@ -172,6 +184,21 @@ export class ProjectController {
       return NextResponse.json({ success: true, data: updated });
     } catch (err: any) {
       console.error('[ProjectController] updateDrawing error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  async finaliseDrawing(req: NextRequest, drawingId: string, user: any) {
+    try {
+      const companyId = this.getCompanyId(user);
+      const result = await this.projectService.finaliseDrawing(drawingId, companyId);
+      return NextResponse.json({
+        success: true,
+        data: result,
+        message: 'Drawing successfully finalised and remaining drawings moved to Superseded folder.'
+      });
+    } catch (err: any) {
+      console.error('[ProjectController] finaliseDrawing error:', err);
       return NextResponse.json({ success: false, message: err.message }, { status: 500 });
     }
   }

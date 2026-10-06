@@ -128,6 +128,16 @@ export class ProjectRepository {
     return await this.projectRepo().findOne({ where });
   }
 
+  async updateProject(id: string, updates: Partial<ProjectModel>): Promise<ProjectModel> {
+    const repo = this.projectRepo();
+    await repo.update(id, updates);
+    const updated = await repo.findOne({ where: { id } });
+    if (!updated) {
+      throw new Error(`Project ${id} not found.`);
+    }
+    return updated;
+  }
+
   async deleteProject(id: string): Promise<void> {
     try {
       // 1. Files in project folders
@@ -330,6 +340,18 @@ export class ProjectRepository {
 
   async findRevisionsByDrawingId(drawingId: string): Promise<DrawingRevisionModel[]> {
     return await this.drawingRevisionRepo().find({ where: { drawingId }, order: { createdAt: 'DESC' } });
+  }
+
+  async updateRevisionsByDrawingId(drawingId: string, updates: Partial<DrawingRevisionModel>): Promise<void> {
+    const repo = this.drawingRevisionRepo();
+    await repo.update({ drawingId }, updates);
+  }
+
+  async updateRevision(id: string, updates: Partial<DrawingRevisionModel>): Promise<DrawingRevisionModel> {
+    const repo = this.drawingRevisionRepo();
+    await repo.update(id, updates);
+    const updated = await repo.findOne({ where: { id } });
+    return updated!;
   }
 
   async saveFileRecord(fileData: Partial<DrawingFileModel>): Promise<DrawingFileModel> {
