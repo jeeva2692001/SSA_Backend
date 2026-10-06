@@ -49,6 +49,65 @@ export class LeadController {
     }
   }
 
+  // ── Tagline Controller Methods ──────────────────────────────────────────────
+  async getTaglines(req: NextRequest) {
+    try {
+      const { searchParams } = new URL(req.url);
+      const categoryIdStr = searchParams.get('categoryId');
+      const categoryCode = searchParams.get('categoryCode') || undefined;
+      const categoryId = categoryIdStr ? parseInt(categoryIdStr, 10) : undefined;
+
+      const taglines = await this.leadService.getTaglines(categoryId, categoryCode);
+      return NextResponse.json({ success: true, data: taglines });
+    } catch (err: any) {
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  async createTagline(req: NextRequest, user: any) {
+    try {
+      const body = await req.json();
+      const tagline = await this.leadService.createTagline(body, user.role);
+      return NextResponse.json({ success: true, data: tagline }, { status: 201 });
+    } catch (err: any) {
+      const status = err.message.includes('Unauthorized') ? 403 : 400;
+      return NextResponse.json({ success: false, message: err.message }, { status });
+    }
+  }
+
+  async updateTagline(req: NextRequest, id: number, user: any) {
+    try {
+      const body = await req.json();
+      const tagline = await this.leadService.updateTagline(id, body, user.role);
+      return NextResponse.json({ success: true, data: tagline });
+    } catch (err: any) {
+      const status = err.message.includes('Unauthorized') ? 403 : 400;
+      return NextResponse.json({ success: false, message: err.message }, { status });
+    }
+  }
+
+  async deleteTagline(req: NextRequest, id: number, user: any) {
+    try {
+      await this.leadService.deleteTagline(id, user.role);
+      return NextResponse.json({ success: true, message: 'Tagline deleted successfully.' });
+    } catch (err: any) {
+      const status = err.message.includes('Unauthorized') ? 403 : 400;
+      return NextResponse.json({ success: false, message: err.message }, { status });
+    }
+  }
+
+  async resetDefaultTaglines(req: NextRequest, user: any) {
+    try {
+      const body = await req.json().catch(() => ({}));
+      const categoryId = body?.categoryId ? parseInt(body.categoryId, 10) : undefined;
+      const taglines = await this.leadService.resetDefaultTaglines(categoryId, user.role);
+      return NextResponse.json({ success: true, data: taglines, message: 'Taglines reset to defaults successfully.' });
+    } catch (err: any) {
+      const status = err.message.includes('Unauthorized') ? 403 : 400;
+      return NextResponse.json({ success: false, message: err.message }, { status });
+    }
+  }
+
   async getTemplateFields(req: NextRequest) {
     try {
       const { searchParams } = new URL(req.url);
@@ -198,6 +257,27 @@ export class LeadController {
       return NextResponse.json({ success: true, message: 'Lead deleted successfully.' });
     } catch (err: any) {
       const status = err.message.includes('Unauthorized') ? 403 : err.message.includes('not found') ? 404 : 500;
+      return NextResponse.json({ success: false, message: err.message }, { status });
+    }
+  }
+
+  async convertLeadToClient(req: NextRequest, id: number, user: any) {
+    try {
+      const userContext = {
+        companyId: user.companyId || '',
+        branchId: user.branchId || null,
+        role: user.role,
+        userId: user.userId || user.companyId || user.branchId || 'system'
+      };
+
+      const result = await this.leadService.convertLeadToClient(id, userContext);
+      return NextResponse.json({
+        success: true,
+        message: 'Lead converted to Client successfully.',
+        data: result
+      });
+    } catch (err: any) {
+      const status = err.message.includes('Unauthorized') ? 403 : err.message.includes('not found') ? 404 : 400;
       return NextResponse.json({ success: false, message: err.message }, { status });
     }
   }

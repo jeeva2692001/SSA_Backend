@@ -4,22 +4,19 @@ import fs from 'fs';
 import path from 'path';
 import { authMiddleware } from '../../../src/modules/auth/middlewares/auth.middleware';
 
-// Initialize Cloudinary configuration if environment variables are set
-const isCloudinaryConfigured = !!(
-  process.env.CLOUDINARY_CLOUD_NAME &&
-  process.env.CLOUDINARY_API_KEY &&
-  process.env.CLOUDINARY_API_SECRET
-);
+// Helper to get configured Cloudinary instance
+function getCloudinary() {
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME || 'sbsymyo4';
+  const apiKey = process.env.CLOUDINARY_API_KEY || '421495547388578';
+  const apiSecret = process.env.CLOUDINARY_API_SECRET || 'UMYh-b3HhK521tbFiwtDz1diR8k';
 
-if (isCloudinaryConfigured) {
   cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
+    cloud_name: cloudName,
+    api_key: apiKey,
+    api_secret: apiSecret,
+    secure: true,
   });
-  console.log('[UploadRoute] Cloudinary configured successfully.');
-} else {
-  console.warn('[UploadRoute] Cloudinary environment variables are missing. Using local filesystem fallback.');
+  return cloudinary;
 }
 
 export async function POST(req: NextRequest) {
@@ -27,22 +24,41 @@ export async function POST(req: NextRequest) {
     try {
       const formData = await req.formData();
       const file = formData.get('file') as File | null;
+      const targetFolder = (formData.get('folder') as string) || process.env.CLOUDINARY_FOLDER || 'project_drawings';
 
       if (!file) {
         return NextResponse.json({ success: false, message: 'No file provided.' }, { status: 400 });
+      }
+
+      const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB (accommodates DWG/CAD deliverable files)
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        return NextResponse.json({
+          success: false,
+          message: 'File size exceeds the maximum permitted limit of 50 MB per file.'
+        }, { status: 400 });
       }
 
       // Convert Next.js File to Buffer
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
-      if (isCloudinaryConfigured) {
-        // Upload to Cloudinary using stream
+      const isDwgOrCad = /\.(dwg|dxf|cad|rvt|ifc)$/i.test(file.name) || file.type.includes('acad') || file.type.includes('dwg');
+      const isImageOrPdf = file.type.startsWith('image/') || file.type === 'application/pdf' || /\.(png|jpg|jpeg|webp|gif|svg|pdf)$/i.test(file.name);
+      const resourceType = isDwgOrCad ? 'raw' : (isImageOrPdf ? 'auto' : 'raw');
+
+      let fileUrl = '';
+      let publicId = '';
+
+      try {
+        const cloudinaryInstance = getCloudinary();
+        // Upload to Cloudinary using stream into designated folder
         const result = await new Promise<any>((resolve, reject) => {
-          cloudinary.uploader.upload_stream(
+          cloudinaryInstance.uploader.upload_stream(
             {
-              resource_type: 'auto',
-              folder: 'lead_documents',
+              resource_type: resourceType,
+              folder: targetFolder,
+              use_filename: true,
+              unique_filename: true,
             },
             (error, result) => {
               if (error) {
@@ -55,38 +71,31 @@ export async function POST(req: NextRequest) {
           ).end(buffer);
         });
 
-        return NextResponse.json({
-          success: true,
-          url: result.secure_url,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          publicId: result.public_id,
-        });
-      } else {
-        // Fallback: Upload to local public/uploads directory
-        const uploadDir = path.join(process.cwd(), 'public', 'uploads');
-        if (!fs.existsSync(uploadDir)) {
-          fs.mkdirSync(uploadDir, { recursive: true });
+        fileUrl = result.secure_url || result.url;
+        publicId = result.public_id;
+      } catch (cloudErr) {
+        console.warn('[UploadRoute] Cloudinary failed, saving to local public/uploads directory:', cloudErr);
+        const uploadsDir = path.join(process.cwd(), 'public', 'uploads', targetFolder);
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
         }
-
-        const sanitizedFileName = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-        const filePath = path.join(uploadDir, sanitizedFileName);
-        
+        const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+        const filePath = path.join(uploadsDir, safeName);
         fs.writeFileSync(filePath, buffer);
-
-        // Since it is saved in public/uploads, it can be served as /uploads/filename
-        const fileUrl = `/uploads/${sanitizedFileName}`;
-
-        return NextResponse.json({
-          success: true,
-          url: fileUrl,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          fallback: true,
-        });
+        fileUrl = `/uploads/${targetFolder}/${safeName}`;
+        publicId = safeName;
       }
+
+      return NextResponse.json({
+        success: true,
+        url: fileUrl,
+        secure_url: fileUrl,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        publicId: publicId,
+        folder: targetFolder,
+      });
     } catch (err: any) {
       console.error('[UploadRoute] Upload handler error:', err);
       return NextResponse.json({ success: false, message: err.message }, { status: 500 });

@@ -107,4 +107,25 @@ export class BranchController {
       );
     }
   }
+
+  async checkPassword(req: NextRequest, user: any): Promise<NextResponse> {
+    try {
+      const companyId = user.companyId || user.userId;
+      if (!companyId) {
+        return NextResponse.json({ message: 'Company Identification is missing.' }, { status: 400 });
+      }
+
+      const body = await req.json();
+      const { branchId, password } = body;
+      if (!branchId || !password) {
+        return NextResponse.json({ isSame: false }, { status: 200 });
+      }
+
+      const isSame = await this.branchService.isExistingPassword(branchId, companyId, password);
+      return NextResponse.json({ isSame }, { status: 200 });
+    } catch (error: any) {
+      console.error('Error in BranchController.checkPassword:', error.message);
+      return NextResponse.json({ isSame: false }, { status: 200 });
+    }
+  }
 }

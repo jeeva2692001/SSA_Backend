@@ -29,7 +29,22 @@ export class BranchRepository {
 
   async findByCodeAndCompanyId(code: string, companyId: string): Promise<BranchModel | null> {
     const repo = await this.getRepository();
-    return await repo.findOne({ where: { code, companyId } });
+    const cleanCode = code.trim().toUpperCase();
+    return await repo
+      .createQueryBuilder('branch')
+      .where('branch.companyId = :companyId', { companyId })
+      .andWhere('UPPER(TRIM(branch.code)) = :cleanCode', { cleanCode })
+      .getOne();
+  }
+
+  async findByNameAndCompanyId(name: string, companyId: string): Promise<BranchModel | null> {
+    const repo = await this.getRepository();
+    const cleanName = name.trim().toLowerCase();
+    return await repo
+      .createQueryBuilder('branch')
+      .where('branch.companyId = :companyId', { companyId })
+      .andWhere('LOWER(TRIM(branch.name)) = :cleanName', { cleanName })
+      .getOne();
   }
 
   async createBranch(branchData: Partial<BranchModel>): Promise<BranchModel> {
