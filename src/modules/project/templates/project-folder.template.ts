@@ -8,7 +8,8 @@ export interface FolderTemplateNode {
 const DRAWING_WORKFLOW_CHILDREN: FolderTemplateNode[] = [
   { name: '1. Work In Progress', folderType: 'WORKFLOW', sortOrder: 1 },
   { name: '2. Shared', folderType: 'WORKFLOW', sortOrder: 2 },
-  { name: '3. Archive', folderType: 'WORKFLOW', sortOrder: 3 },
+  { name: '3. Superseded', folderType: 'WORKFLOW', sortOrder: 3 },
+  { name: '4. Archive', folderType: 'WORKFLOW', sortOrder: 4 },
 ];
 
 const BOQ_SUBFOLDERS: FolderTemplateNode[] = [
@@ -22,6 +23,20 @@ const TESTING_COMMISSIONING_SUBFOLDERS: FolderTemplateNode[] = [
 ];
 
 export const STANDARD_PROJECT_FOLDER_TEMPLATE: FolderTemplateNode[] = [
+  // 0. REFERENCES (Client Reference Documents & Inspirations)
+  {
+    name: '0. REFERENCES',
+    folderType: 'TOP_LEVEL',
+    sortOrder: 0,
+    children: [
+      { name: '1. Client Inspirations & Moodboards', folderType: 'CATEGORY', sortOrder: 1 },
+      { name: '2. Style References & Aesthetics', folderType: 'CATEGORY', sortOrder: 2 },
+      { name: '3. Material & Finishes References', folderType: 'CATEGORY', sortOrder: 3 },
+      { name: '4. Site Photos & Context', folderType: 'CATEGORY', sortOrder: 4 },
+      { name: '5. Precedent Studies & Benchmark Drawings', folderType: 'CATEGORY', sortOrder: 5 },
+    ],
+  },
+
   // 1. PROJECT INFORMATION
   {
     name: '1. PROJECT INFORMATION',

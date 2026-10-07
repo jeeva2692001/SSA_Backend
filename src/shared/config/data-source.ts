@@ -7,6 +7,7 @@ import { CompanyModel } from "../../modules/company/models/company.model";
 import { EmployeeModel } from "../../modules/employee/models/employee.model";
 import { BranchModel } from "../../modules/branch/models/branch.model";
 import { ProjectCategoryModel } from "../../modules/lead/models/project-category.model";
+import { CategoryTaglineModel } from "../../modules/lead/models/category-tagline.model";
 import { CategoryTemplateFieldModel } from "../../modules/lead/models/category-template-field.model";
 import { LeadModel } from "../../modules/lead/models/lead.model";
 import { LeadRequirementValueModel } from "../../modules/lead/models/lead-requirement-value.model";
@@ -49,6 +50,7 @@ export const AppDataSource = globalRef.AppDataSource || new DataSource({
     BranchModel,
     ClientModel,
     ProjectCategoryModel,
+    CategoryTaglineModel,
     CategoryTemplateFieldModel,
     LeadModel,
     LeadRequirementValueModel,

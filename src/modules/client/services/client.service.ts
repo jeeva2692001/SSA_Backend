@@ -292,6 +292,47 @@ export class ClientService {
     }
 
     const updated = await this.clientRepo.update(id, data);
+    if (data.enableReferencesFolder !== undefined) {
+      try {
+        const isRef = Boolean(data.enableReferencesFolder);
+        const clientProjects = await this.clientRepo.findProjectsByClientId(id, existing.clientName || existing.company);
+        const projectRepo = await (this.clientRepo as any).getProjectRepo();
+        const manager = projectRepo.manager;
+
+        for (const p of clientProjects) {
+          await projectRepo.update(p.id, { enableReferencesFolder: isRef });
+          if (!isRef) {
+            // Delete REF discipline from project_disciplines for this project
+            await manager.createQueryBuilder()
+              .delete()
+              .from('project_disciplines')
+              .where('projectId = :projectId AND disciplineCode = :code', { projectId: p.id, code: 'REF' })
+              .execute();
+          } else {
+            // Add REF discipline if not present
+            const existingRef = await manager.createQueryBuilder()
+              .select('pd.id')
+              .from('project_disciplines', 'pd')
+              .where('pd.projectId = :projectId AND pd.disciplineCode = :code', { projectId: p.id, code: 'REF' })
+              .getRawOne();
+            if (!existingRef) {
+              await manager.createQueryBuilder()
+                .insert()
+                .into('project_disciplines')
+                .values({
+                  projectId: p.id,
+                  disciplineCode: 'REF',
+                  folderCode: `${p.projectCode}-REF`,
+                  status: 'Active'
+                })
+                .execute();
+            }
+          }
+        }
+      } catch (pErr) {
+        console.warn('[ClientService] Note syncing enableReferencesFolder to projects:', pErr);
+      }
+    }
     return updated!;
   }
 

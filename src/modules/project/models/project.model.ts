@@ -50,6 +50,9 @@ export class ProjectModel {
   @Column({ type: 'varchar', default: 'Active' })
   status!: string;
 
+  @Column({ type: 'boolean', default: false })
+  enableReferencesFolder!: boolean;
+
   @CreateDateColumn()
   createdAt!: Date;
 

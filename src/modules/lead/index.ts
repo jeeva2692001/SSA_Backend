@@ -1,4 +1,5 @@
 export * from './models/project-category.model';
+export * from './models/category-tagline.model';
 export * from './models/category-template-field.model';
 export * from './models/lead.model';
 export * from './models/lead-requirement-value.model';

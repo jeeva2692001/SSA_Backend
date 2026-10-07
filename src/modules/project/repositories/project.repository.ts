@@ -52,12 +52,48 @@ export class ProjectRepository {
   // --- PROJECTS ---
   async getNextProjectSequence(prefix: string, year: number, companyId?: string): Promise<number> {
     const repo = this.projectRepo();
-    const where: any = { projectPrefix: prefix, year };
-    if (companyId) {
-      where.companyId = companyId;
+    const pattern = `${prefix}-${year}-%`;
+
+    // Query all existing projects for this prefix and year (including across company to avoid global UQ violations)
+    const projects = await repo
+      .createQueryBuilder('p')
+      .select(['p.sequence', 'p.projectCode'])
+      .where('(p.projectPrefix = :prefix AND p.year = :year) OR p.projectCode LIKE :pattern', {
+        prefix,
+        year,
+        pattern
+      })
+      .getMany();
+
+    let maxSeq = 0;
+    for (const p of projects) {
+      if (typeof p.sequence === 'number' && p.sequence > maxSeq) {
+        maxSeq = p.sequence;
+      }
+      if (p.projectCode) {
+        const parts = p.projectCode.split('-');
+        if (parts.length >= 3) {
+          const parsed = parseInt(parts[2], 10);
+          if (!isNaN(parsed) && parsed > maxSeq) {
+            maxSeq = parsed;
+          }
+        }
+      }
     }
-    const count = await repo.count({ where });
-    return count + 1;
+
+    let candidateSeq = Math.max(maxSeq, projects.length) + 1;
+
+    // Guaranteed uniqueness check: loop until candidate projectCode does not exist
+    while (true) {
+      const codeCandidate = `${prefix}-${year}-${String(candidateSeq).padStart(3, '0')}`;
+      const existing = await repo.findOne({ where: { projectCode: codeCandidate } });
+      if (!existing) {
+        break;
+      }
+      candidateSeq++;
+    }
+
+    return candidateSeq;
   }
 
   async createProject(projectData: Partial<ProjectModel>): Promise<ProjectModel> {
@@ -90,6 +126,16 @@ export class ProjectRepository {
       where.companyId = companyId;
     }
     return await this.projectRepo().findOne({ where });
+  }
+
+  async updateProject(id: string, updates: Partial<ProjectModel>): Promise<ProjectModel> {
+    const repo = this.projectRepo();
+    await repo.update(id, updates);
+    const updated = await repo.findOne({ where: { id } });
+    if (!updated) {
+      throw new Error(`Project ${id} not found.`);
+    }
+    return updated;
   }
 
   async deleteProject(id: string): Promise<void> {
@@ -294,6 +340,18 @@ export class ProjectRepository {
 
   async findRevisionsByDrawingId(drawingId: string): Promise<DrawingRevisionModel[]> {
     return await this.drawingRevisionRepo().find({ where: { drawingId }, order: { createdAt: 'DESC' } });
+  }
+
+  async updateRevisionsByDrawingId(drawingId: string, updates: Partial<DrawingRevisionModel>): Promise<void> {
+    const repo = this.drawingRevisionRepo();
+    await repo.update({ drawingId }, updates);
+  }
+
+  async updateRevision(id: string, updates: Partial<DrawingRevisionModel>): Promise<DrawingRevisionModel> {
+    const repo = this.drawingRevisionRepo();
+    await repo.update(id, updates);
+    const updated = await repo.findOne({ where: { id } });
+    return updated!;
   }
 
   async saveFileRecord(fileData: Partial<DrawingFileModel>): Promise<DrawingFileModel> {

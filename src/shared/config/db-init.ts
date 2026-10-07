@@ -3,15 +3,19 @@ import { UserModel } from '../../modules/auth/models/user.model';
 import { CompanyModel } from '../../modules/company/models/company.model';
 import { BranchModel } from '../../modules/branch/models/branch.model';
 import { ProjectCategoryModel } from '../../modules/lead/models/project-category.model';
+import { CategoryTaglineModel } from '../../modules/lead/models/category-tagline.model';
 import { CategoryTemplateFieldModel } from '../../modules/lead/models/category-template-field.model';
 import { DeliverableTemplateModel } from '../../modules/lead/models/deliverable-template.model';
 import { LeadDeliverableModel } from '../../modules/lead/models/lead-deliverable.model';
 import { ClientModel } from '../../modules/client/models/client.model';
+import { EmployeeModel } from '../../modules/employee/models/employee.model';
+import { DEFAULT_CATEGORY_TAGLINES } from '../../modules/lead/services/lead.service';
 import { IsNull } from 'typeorm';
 
 async function seedLeadTemplates(ds: any) {
   console.log('[Seed] Seeding Lead categories...');
   const categoryRepo = ds.getRepository(ProjectCategoryModel);
+  const taglineRepo = ds.getRepository(CategoryTaglineModel);
   const fieldRepo = ds.getRepository(CategoryTemplateFieldModel);
   const deliverableTemplateRepo = ds.getRepository(DeliverableTemplateModel);
 
@@ -513,7 +517,34 @@ async function seedLeadTemplates(ds: any) {
       await deliverableTemplateRepo.save(template);
     }
   }
-  console.log('[Seed] Seeding Lead categories, fields, and deliverables templates completed.');
+  // 4. Seed Category Taglines
+  console.log('[Seed] Seeding Category Taglines...');
+  for (const [catCode, taglines] of Object.entries(DEFAULT_CATEGORY_TAGLINES)) {
+    const category = categoryMap[catCode];
+    if (!category) continue;
+
+    for (let i = 0; i < taglines.length; i++) {
+      const tagName = taglines[i];
+      const existing = await taglineRepo.findOne({
+        where: {
+          categoryId: category.id,
+          name: tagName
+        }
+      });
+
+      if (!existing) {
+        const item = taglineRepo.create({
+          categoryId: category.id,
+          name: tagName,
+          displayOrder: i + 1,
+          isActive: true
+        });
+        await taglineRepo.save(item);
+      }
+    }
+  }
+
+  console.log('[Seed] Seeding Lead categories, fields, deliverables templates, and category taglines completed.');
 }
 
 async function main() {
@@ -553,6 +584,51 @@ async function main() {
         await clientRepo.save(entity);
       }
       console.log('[Seed] Seeded initial clients successfully.');
+    }
+
+    // Seed Initial Employees from Organisational Hierarchy if table is empty
+    const employeeRepo = ds.getRepository(EmployeeModel);
+    const employeeCount = await employeeRepo.count();
+    if (employeeCount === 0) {
+      console.log('[Seed] Seeding initial employees from Organisational Hierarchy...');
+      const defaultEmployees = [
+        // Architectural Design
+        { employeeId: 'EMP-001', name: 'Bhuvanasundar', email: 'bhuvanasundar@sundramarchitects.com', phone: '9840011001', department: 'Architectural Design', designation: 'Principle Architect', manager: 'None', joiningDate: '01-04-2012', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-002', name: 'Ponshankar', email: 'ponshankar@sundramarchitects.com', phone: '9840011002', department: 'Architectural Design', designation: 'Chief Architect', manager: 'Bhuvanasundar', joiningDate: '15-07-2014', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-003', name: 'Subash', email: 'subash@sundramarchitects.com', phone: '9840011003', department: 'Architectural Design', designation: '3D Design Architect', manager: 'Ponshankar', joiningDate: '01-08-2016', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-004', name: 'Haran', email: 'haran@sundramarchitects.com', phone: '9840011004', department: 'Architectural Design', designation: 'Architect', manager: 'Ponshankar', joiningDate: '10-03-2017', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-005', name: 'Poovarasan', email: 'poovarasan@sundramarchitects.com', phone: '9840011005', department: 'Architectural Design', designation: 'Junior Architect', manager: 'Haran', joiningDate: '15-10-2019', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-006', name: 'Pavithra', email: 'pavithra@sundramarchitects.com', phone: '9840011006', department: 'Architectural Design', designation: '3D Draftsman', manager: 'Subash', joiningDate: '01-02-2020', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-007', name: 'Lavanya', email: 'lavanya@sundramarchitects.com', phone: '9840011007', department: 'Architectural Design', designation: '3D Draftsman', manager: 'Subash', joiningDate: '12-05-2021', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-008', name: 'Divya', email: 'divya@sundramarchitects.com', phone: '9840011008', department: 'Architectural Design', designation: '3D Draftsman', manager: 'Subash', joiningDate: '10-01-2022', status: 'Active', companyId: 'COM-001' },
+
+        // Design & Drafting
+        { employeeId: 'EMP-009', name: 'Duraisamy', email: 'duraisamy@sundramarchitects.com', phone: '9840022001', department: 'Design & Drafting', designation: 'Design Coordination Engineer', manager: 'Bhuvanasundar', joiningDate: '15-06-2015', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-010', name: 'Umamageshwari', email: 'umamageshwari@sundramarchitects.com', phone: '9840022002', department: 'Design & Drafting', designation: 'Design Engineer', manager: 'Duraisamy', joiningDate: '01-09-2016', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-011', name: 'Gokul', email: 'gokul@sundramarchitects.com', phone: '9840022003', department: 'Design & Drafting', designation: 'Senior 2D Draftsman', manager: 'Duraisamy', joiningDate: '10-04-2018', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-012', name: 'Mohan Kumar', email: 'mohan.kumar@sundramarchitects.com', phone: '9840022004', department: 'Design & Drafting', designation: '2D Draftsman', manager: 'Gokul', joiningDate: '20-11-2019', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-013', name: 'Arun Adhiyaman', email: 'arun.a@sundramarchitects.com', phone: '9840022005', department: 'Design & Drafting', designation: '2D Draftsman', manager: 'Gokul', joiningDate: '15-03-2020', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-014', name: 'Poornima', email: 'poornima@sundramarchitects.com', phone: '9840022006', department: 'Design & Drafting', designation: '2D Draftsman', manager: 'Gokul', joiningDate: '01-08-2021', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-015', name: 'Raahiba', email: 'raahiba@sundramarchitects.com', phone: '9840022007', department: 'Design & Drafting', designation: '2D Interior Draftsman', manager: 'Umamageshwari', joiningDate: '14-02-2022', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-016', name: 'Disha', email: 'disha@sundramarchitects.com', phone: '9840022008', department: 'Design & Drafting', designation: '2D Interior Draftsman', manager: 'Umamageshwari', joiningDate: '05-01-2023', status: 'Active', companyId: 'COM-001' },
+
+        // Structural Design
+        { employeeId: 'EMP-017', name: 'Suresh Kumar K', email: 'suresh.k@sundramarchitects.com', phone: '9840033001', department: 'Structural Design', designation: 'Structural Design Engineer', manager: 'Bhuvanasundar', joiningDate: '10-08-2015', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-018', name: 'Gowtham Raja', email: 'gowtham.raja@sundramarchitects.com', phone: '9840033002', department: 'Structural Design', designation: 'Structural Design Engineer', manager: 'Suresh Kumar K', joiningDate: '15-05-2018', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-019', name: 'Rani', email: 'rani@sundramarchitects.com', phone: '9840033003', department: 'Structural Design', designation: 'Structural Draftsman', manager: 'Suresh Kumar K', joiningDate: '01-06-2020', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-020', name: 'Bhuvanesh Bharath', email: 'bhuvanesh.b@sundramarchitects.com', phone: '9840033004', department: 'Structural Design', designation: 'Structural Draftsman', manager: 'Suresh Kumar K', joiningDate: '10-09-2021', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-021', name: 'Manish', email: 'manish@sundramarchitects.com', phone: '9840033005', department: 'Structural Design', designation: 'Structural Draftsman', manager: 'Gowtham Raja', joiningDate: '20-07-2022', status: 'Active', companyId: 'COM-001' },
+
+        // Project Management
+        { employeeId: 'EMP-022', name: 'Suresh Kumar M', email: 'suresh.m@sundramarchitects.com', phone: '9840044001', department: 'Project Management', designation: 'Project Management Engineer', manager: 'Bhuvanasundar', joiningDate: '15-01-2016', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-023', name: 'Pranesa Raja', email: 'pranesa.raja@sundramarchitects.com', phone: '9840044002', department: 'Project Management', designation: 'Project Management Engineer', manager: 'Suresh Kumar M', joiningDate: '01-11-2017', status: 'Active', companyId: 'COM-001' },
+        { employeeId: 'EMP-024', name: 'Karthick', email: 'karthick@sundramarchitects.com', phone: '9840044003', department: 'Project Management', designation: 'Junior Project Management Engineer', manager: 'Suresh Kumar M', joiningDate: '15-04-2022', status: 'Active', companyId: 'COM-001' },
+      ];
+      for (const emp of defaultEmployees) {
+        const entity = employeeRepo.create(emp);
+        await employeeRepo.save(entity);
+      }
+      console.log('[Seed] Seeded initial employees successfully.');
     }
 
     // Seed Disciplines & Drawing Types Master

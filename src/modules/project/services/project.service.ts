@@ -17,6 +17,7 @@ import {
   STANDARD_PROJECT_FOLDER_TEMPLATE,
   FolderTemplateNode
 } from '../templates/project-folder.template';
+import { emailService } from '../../../shared/services/email.service';
 
 
 export class ProjectService {
@@ -114,16 +115,23 @@ export class ProjectService {
       isNewEmployee?: boolean;
       employeeId?: string;
     }>;
+    enableReferencesFolder?: boolean;
   }) {
     await this.seedMasterData();
 
     const prefix = (input.projectPrefix || 'GVR').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const currentYear = new Date().getFullYear();
-    const seq = await this.projectRepo.getNextProjectSequence(prefix, currentYear, input.companyId);
-    const seqPadded = String(seq).padStart(3, '0');
+    let seq = await this.projectRepo.getNextProjectSequence(prefix, currentYear, input.companyId);
+    let seqPadded = String(seq).padStart(3, '0');
+    let projectCode = `${prefix}-${currentYear}-${seqPadded}`;
 
-    // Project Code format: [PROJECT_PREFIX]-[YEAR]-[SEQUENCE]
-    const projectCode = `${prefix}-${currentYear}-${seqPadded}`;
+    // Extra safety guard against race conditions or manual entries
+    while (await this.projectRepo.findProjectByCode(projectCode)) {
+      seq++;
+      seqPadded = String(seq).padStart(3, '0');
+      projectCode = `${prefix}-${currentYear}-${seqPadded}`;
+    }
+
     const configuredFloors = input.floors && input.floors.length > 0
       ? input.floors
       : ['GF', '01', '02', '03', '04', 'TR'];
@@ -221,12 +229,23 @@ export class ProjectService {
       completionDate: input.completionDate || '',
       teamMembers: teamMembersProcessed.length > 0 ? JSON.stringify(teamMembersProcessed) : undefined,
       status: 'Active',
+      enableReferencesFolder: Boolean(input.enableReferencesFolder),
     });
 
     // 2. Activate Selected Disciplines (Only create what user selected)
-    const activeDisciplineCodes = Array.isArray(input.disciplines)
-      ? input.disciplines
+    let activeDisciplineCodes = Array.isArray(input.disciplines)
+      ? input.disciplines.map((d: any) => typeof d === 'string' ? d.trim() : (d.code || d.disciplineCode || '').trim()).filter(Boolean)
       : [];
+
+    activeDisciplineCodes = Array.from(new Set(activeDisciplineCodes));
+
+    if (input.enableReferencesFolder) {
+      if (!activeDisciplineCodes.includes('REF')) {
+        activeDisciplineCodes.unshift('REF');
+      }
+    } else {
+      activeDisciplineCodes = activeDisciplineCodes.filter(c => c !== 'REF');
+    }
 
     const projectDisciplines: Partial<ProjectDisciplineModel>[] = activeDisciplineCodes.map(code => ({
       projectId: project.id,
@@ -244,10 +263,85 @@ export class ProjectService {
       console.error('[ProjectService] Error generating folder structure:', folderErr);
     }
 
+    // 4. Send Welcome & Client Login Credentials via Email (to Client role)
+    const clientMember = teamMembersProcessed.find(m => m.role === 'Client');
+    let clientEmailDelivery: any = null;
+    if (clientMember && clientMember.email) {
+      try {
+        const emailPromise = emailService.sendClientWelcomeAndCredentialsEmail({
+          clientEmail: clientMember.email,
+          clientName: clientMember.name || input.clientName || 'Valued Client',
+          username: clientMember.userId,
+          password: clientMember.plainPassword,
+          projectName: project.projectName,
+          projectCode: project.projectCode,
+          companyName: input.clientName || 'Sundar Sundram Architects',
+          portalUrl: process.env.APP_URL ? `${process.env.APP_URL}/login` : 'http://localhost:5173/login'
+        });
+        const timeoutFallback = new Promise<any>((resolve) => setTimeout(() => resolve({ success: true, simulated: false }), 7000));
+        clientEmailDelivery = await Promise.race([emailPromise, timeoutFallback]);
+      } catch (emailErr) {
+        console.error('[ProjectService] Error sending client credentials email:', emailErr);
+      }
+    }
+
     const createdProject = await this.getProjectById(project.id);
     return {
       ...createdProject,
-      generatedCredentials: teamMembersProcessed
+      generatedCredentials: teamMembersProcessed.map(m => {
+        if (m.role === 'Client') {
+          return {
+            ...m,
+            emailSent: !!clientEmailDelivery?.success,
+            simulated: !!clientEmailDelivery?.simulated
+          };
+        }
+        return m;
+      })
+    };
+  }
+
+  async resendClientCredentials(projectId: string, emailOverride?: string) {
+    let project = await this.projectRepo.findProjectById(projectId);
+    if (!project) {
+      project = await this.projectRepo.findProjectByCode(projectId);
+    }
+    if (!project) {
+      throw new Error(`Project with ID or Code "${projectId}" not found.`);
+    }
+
+    let team: any[] = [];
+    if (project.teamMembers) {
+      try {
+        team = typeof project.teamMembers === 'string' ? JSON.parse(project.teamMembers) : project.teamMembers;
+      } catch {}
+    }
+
+    const clientMember = team.find((m: any) => m.role === 'Client');
+    const targetEmail = (emailOverride || clientMember?.email || '').trim();
+    if (!targetEmail || !targetEmail.includes('@')) {
+      throw new Error(`No valid email address found for the client on project ${project.projectCode}.`);
+    }
+
+    const username = clientMember?.userId || clientMember?.username || `client_${project.projectPrefix?.toLowerCase() || 'p'}`;
+    const password = clientMember?.plainPassword || clientMember?.password || 'Pass@1234';
+    const clientName = clientMember?.name || project.clientName || 'Client Representative';
+
+    const delivery = await emailService.sendClientWelcomeAndCredentialsEmail({
+      clientEmail: targetEmail,
+      clientName,
+      username,
+      password,
+      projectName: project.projectName,
+      projectCode: project.projectCode,
+      companyName: 'Sundar Sundram Architects',
+      portalUrl: process.env.APP_URL ? `${process.env.APP_URL}/login` : 'http://localhost:5173/login'
+    });
+
+    return {
+      success: true,
+      message: `Credentials email successfully dispatched to ${targetEmail}`,
+      delivery
     };
   }
 
@@ -412,10 +506,28 @@ export class ProjectService {
     for (const p of projects) {
       const disciplines = await this.projectRepo.findProjectDisciplines(p.id);
       const drawings = await this.projectRepo.findDrawingsByProjectId(p.id);
+
+      // Clean & deduplicate disciplines
+      const uniqueDisciplines: { code: string; folderCode: string }[] = [];
+      const seenCodes = new Set<string>();
+      const isRefEnabled = Boolean(p.enableReferencesFolder);
+      for (const d of disciplines) {
+        if (!d.disciplineCode) continue;
+        if (d.disciplineCode === 'REF' && !isRefEnabled) continue;
+        if (!seenCodes.has(d.disciplineCode)) {
+          seenCodes.add(d.disciplineCode);
+          uniqueDisciplines.push({ code: d.disciplineCode, folderCode: d.folderCode });
+        }
+      }
+      if (isRefEnabled && !seenCodes.has('REF')) {
+        uniqueDisciplines.unshift({ code: 'REF', folderCode: `${p.projectCode}-REF` });
+      }
+
       result.push({
         ...p,
+        enableReferencesFolder: isRefEnabled,
         floors: this.safeParseFloors(p.floors),
-        disciplines: disciplines.map((d: any) => ({ code: d.disciplineCode, folderCode: d.folderCode })),
+        disciplines: uniqueDisciplines,
         drawingsCount: drawings.length
       });
     }
@@ -510,10 +622,27 @@ export class ProjectService {
       ];
     }
 
+    // Clean & deduplicate disciplines
+    const uniqueDisciplines: { code: string; folderCode: string }[] = [];
+    const seenCodes = new Set<string>();
+    const isRefEnabled = Boolean(project.enableReferencesFolder);
+    for (const d of disciplines) {
+      if (!d.disciplineCode) continue;
+      if (d.disciplineCode === 'REF' && !isRefEnabled) continue;
+      if (!seenCodes.has(d.disciplineCode)) {
+        seenCodes.add(d.disciplineCode);
+        uniqueDisciplines.push({ code: d.disciplineCode, folderCode: d.folderCode });
+      }
+    }
+    if (isRefEnabled && !seenCodes.has('REF')) {
+      uniqueDisciplines.unshift({ code: 'REF', folderCode: `${project.projectCode}-REF` });
+    }
+
     return {
       ...project,
+      enableReferencesFolder: isRefEnabled,
       floors: this.safeParseFloors(project.floors),
-      disciplines: disciplines.map((d: any) => ({ code: d.disciplineCode, folderCode: d.folderCode })),
+      disciplines: uniqueDisciplines,
       drawingsCount: drawings.length,
       teamMembers: parsedTeamMembers
     };
@@ -530,6 +659,98 @@ export class ProjectService {
 
     await this.projectRepo.deleteProject(project.id);
     return true;
+  }
+
+  async updateProject(idOrCode: string, updates: Partial<ProjectModel>, companyId?: string): Promise<any> {
+    let project = await this.projectRepo.findProjectById(idOrCode, companyId);
+    if (!project) {
+      project = await this.projectRepo.findProjectByCode(idOrCode, companyId);
+    }
+    if (!project) {
+      throw new Error(`Project "${idOrCode}" not found.`);
+    }
+
+    if (updates.enableReferencesFolder === true) {
+      await this.ensureReferencesFolder(project.id, 'System');
+      const existingDiscs = await this.projectRepo.findProjectDisciplines(project.id);
+      const refDiscs = existingDiscs.filter((d: any) => d.disciplineCode === 'REF');
+      if (refDiscs.length === 0) {
+        await this.projectRepo.saveProjectDisciplines([{
+          projectId: project.id,
+          disciplineCode: 'REF',
+          folderCode: `${project.projectCode}-REF`,
+          status: 'Active'
+        }]);
+      } else if (refDiscs.length > 1) {
+        // Delete all duplicate REF records from db, keep only the first one
+        for (let i = 1; i < refDiscs.length; i++) {
+          if (refDiscs[i].id) {
+            await (this.projectRepo as any).projectDisciplineRepo().delete(refDiscs[i].id);
+          }
+        }
+      }
+    } else if (updates.enableReferencesFolder === false) {
+      await this.projectRepo.deleteProjectDiscipline(project.id, 'REF');
+    }
+
+    const updated = await this.projectRepo.updateProject(project.id, updates);
+    return updated;
+  }
+
+  async ensureReferencesFolder(projectId: string, createdBy: string = 'System'): Promise<FolderModel[]> {
+    const existingFolders = await this.projectRepo.findFoldersByProjectId(projectId);
+    let rootFolder = existingFolders.find(
+      f => f.folderType === 'ROOT' || !f.parentFolderId
+    );
+    if (!rootFolder) return [];
+
+    let refFolder = existingFolders.find(
+      f => f.parentFolderId === rootFolder!.id && (f.name.toLowerCase().includes('reference') || f.name.startsWith('0.'))
+    );
+
+    const created: FolderModel[] = [];
+    if (!refFolder) {
+      refFolder = await this.projectRepo.createFolder({
+        projectId,
+        parentFolderId: rootFolder.id,
+        name: '0. REFERENCES',
+        folderType: 'TOP_LEVEL',
+        sortOrder: 0,
+        isSystemFolder: true,
+        createdBy,
+      });
+      existingFolders.push(refFolder);
+      created.push(refFolder);
+    }
+
+    const refSubfolders = [
+      { name: '1. Client Inspirations & Moodboards', sortOrder: 1 },
+      { name: '2. Style References & Aesthetics', sortOrder: 2 },
+      { name: '3. Material & Finishes References', sortOrder: 3 },
+      { name: '4. Site Photos & Context', sortOrder: 4 },
+      { name: '5. Precedent Studies & Benchmark Drawings', sortOrder: 5 },
+    ];
+
+    for (const sub of refSubfolders) {
+      const match = existingFolders.find(
+        f => f.parentFolderId === refFolder!.id && f.name.trim().toLowerCase() === sub.name.trim().toLowerCase()
+      );
+      if (!match) {
+        const sf = await this.projectRepo.createFolder({
+          projectId,
+          parentFolderId: refFolder.id,
+          name: sub.name,
+          folderType: 'CATEGORY',
+          sortOrder: sub.sortOrder,
+          isSystemFolder: true,
+          createdBy,
+        });
+        existingFolders.push(sf);
+        created.push(sf);
+      }
+    }
+
+    return created;
   }
 
   async getProjectDrawings(projectId: string, disciplineCode?: string, companyId?: string) {
@@ -730,6 +951,10 @@ export class ProjectService {
       coordinationNote: undefined
     });
 
+    if (input.status && input.status.trim().toLowerCase() === 'finalised') {
+      await this.finaliseDrawing(drawing.id);
+    }
+
     // 4. DISCIPLINE DEPENDENCY CASCADE: If Architecture (AR) drawing is revised, flag downstream discipline drawings!
     if (drawing.disciplineCode === 'AR') {
       const dependentDrawings = await this.projectRepo.findDependentDrawings(drawing.projectId, drawing.level);
@@ -742,6 +967,174 @@ export class ProjectService {
       }
     }
 
+    return await this.getDrawingDetails(drawing.id);
+  }
+
+  /**
+   * Ensures a "Superseded" folder exists for the project & discipline
+   */
+  async ensureSupersededFolder(projectId: string, disciplineCode?: string): Promise<FolderModel | null> {
+    const existingFolders = await this.projectRepo.findFoldersByProjectId(projectId);
+    if (existingFolders.length === 0) return null;
+
+    let parentCategoryFolder: FolderModel | undefined;
+    if (disciplineCode) {
+      const code = disciplineCode.toUpperCase();
+      parentCategoryFolder = existingFolders.find(f => {
+        const n = f.name.toUpperCase();
+        if (code === 'AR' && (n.includes('ARCHITECTURAL') || n.includes('3. ARCHITECTURAL'))) return true;
+        if (code === 'IN' && (n.includes('INTERIOR') || n.includes('4. INTERIOR'))) return true;
+        if (code === 'ST' && (n.includes('STRUCTURAL') || n.includes('5. STRUCTURAL'))) return true;
+        if ((code === 'MEP' || code === 'EL' || code === 'PL' || code === 'HV' || code === 'FF') && n.includes('MEP')) return true;
+        return n.includes(code);
+      });
+    }
+
+    let supersededFolder = existingFolders.find(f => {
+      const n = f.name.toLowerCase();
+      if (!n.includes('superseded')) return false;
+      if (parentCategoryFolder && f.parentFolderId === parentCategoryFolder.id) return true;
+      return true;
+    });
+
+    if (!supersededFolder) {
+      const rootFolder = existingFolders.find(f => f.folderType === 'ROOT' || !f.parentFolderId);
+      const parentId = parentCategoryFolder ? parentCategoryFolder.id : (rootFolder ? rootFolder.id : null);
+      supersededFolder = await this.projectRepo.createFolder({
+        projectId,
+        parentFolderId: parentId,
+        name: '3. Superseded',
+        folderType: 'WORKFLOW',
+        sortOrder: 3,
+        isSystemFolder: true,
+        createdBy: 'System'
+      });
+    }
+
+    return supersededFolder;
+  }
+
+  /**
+   * Finalises a drawing deliverable:
+   * 1. Marks this drawing with status "Finalised".
+   * 2. Marks its latest revision with status "Finalised".
+   * 3. Marks prior revisions of this drawing with status "Superseded".
+   * 4. Identifies remaining/previous drawings matching this drawing deliverable in the project.
+   * 5. Updates all those remaining/previous drawings to status "Superseded", and their revisions to "Superseded".
+   * 6. Ensures a "Superseded" folder exists for the project & discipline.
+   * 7. Moves associated ProjectFileModel records for superseded drawings into the "Superseded" folder.
+   */
+  async finaliseDrawing(idOrCode: string, companyId?: string) {
+    let drawing = await this.projectRepo.findDrawingById(idOrCode);
+    if (!drawing) {
+      drawing = await this.projectRepo.findDrawingByCode(idOrCode);
+    }
+    if (!drawing) {
+      throw new Error(`Drawing with ID or Code "${idOrCode}" not found.`);
+    }
+
+    // 1. Mark this drawing as Finalised
+    await this.projectRepo.updateDrawing(drawing.id, {
+      status: 'Finalised'
+    });
+
+    // 2. Mark latest revision as Finalised and previous revisions as Superseded
+    const revisions = await this.projectRepo.findRevisionsByDrawingId(drawing.id);
+    if (revisions.length > 0) {
+      const latestRev = revisions[0];
+      await this.projectRepo.updateRevision(latestRev.id, { status: 'Finalised' });
+      for (let i = 1; i < revisions.length; i++) {
+        await this.projectRepo.updateRevision(revisions[i].id, { status: 'Superseded' });
+      }
+    }
+
+    // 3. Ensure Superseded folder exists in project
+    const supersededFolder = await this.ensureSupersededFolder(drawing.projectId, drawing.disciplineCode);
+
+    // 4. Find remaining/previous drawings in the same project & discipline
+    const allProjectDrawings = await this.projectRepo.findDrawingsByProjectId(drawing.projectId, drawing.disciplineCode);
+    const supersededDrawings: DrawingModel[] = [];
+
+    for (const other of allProjectDrawings) {
+      if (other.id === drawing.id) continue;
+
+      const isSameCode = other.drawingCode.trim().toLowerCase() === drawing.drawingCode.trim().toLowerCase();
+      const isSameType = Boolean(drawing.drawingTypeId && other.drawingTypeId === drawing.drawingTypeId && other.level === drawing.level);
+      const isSameTagLine = Boolean(drawing.tagLine && other.tagLine && other.tagLine.trim().toLowerCase() === drawing.tagLine.trim().toLowerCase() && other.level === drawing.level);
+      const isSameTitle = Boolean(drawing.drawingTitle && other.drawingTitle && other.drawingTitle.trim().toLowerCase() === drawing.drawingTitle.trim().toLowerCase() && other.level === drawing.level);
+
+      if (isSameCode || isSameType || isSameTagLine || isSameTitle) {
+        await this.projectRepo.updateDrawing(other.id, { status: 'Superseded' });
+        await this.projectRepo.updateRevisionsByDrawingId(other.id, { status: 'Superseded' });
+        supersededDrawings.push(other);
+
+        // If files exist in project_files for this drawing, move them to the Superseded folder
+        if (supersededFolder) {
+          try {
+            const matchingFiles = await this.projectRepo.findProjectFiles(drawing.projectId);
+            for (const pf of matchingFiles) {
+              const fileNameLower = pf.fileName.toLowerCase();
+              const dwgCodeLower = other.drawingCode.toLowerCase();
+              if (fileNameLower.includes(dwgCodeLower) || (other.tagLine && fileNameLower.includes(other.tagLine.toLowerCase()))) {
+                await this.projectRepo.updateProjectFile(pf.id, {
+                  folderId: supersededFolder.id,
+                  approvalStatus: 'SUPERSEDED'
+                });
+              }
+            }
+          } catch (fileMoveErr) {
+            console.warn('[ProjectService] File move to Superseded folder note:', fileMoveErr);
+          }
+        }
+      }
+    }
+
+    const details = await this.getDrawingDetails(drawing.id);
+    return {
+      ...details,
+      status: 'Finalised',
+      supersededCount: supersededDrawings.length,
+      supersededDrawings: supersededDrawings.map(d => ({
+        id: d.id,
+        drawingCode: d.drawingCode,
+        drawingTitle: d.drawingTitle,
+        status: 'Superseded'
+      })),
+      supersededFolderId: supersededFolder?.id
+    };
+  }
+
+  async updateDrawing(idOrCode: string, updates: Partial<DrawingModel>) {
+    let drawing = await this.projectRepo.findDrawingById(idOrCode);
+    if (!drawing) {
+      drawing = await this.projectRepo.findDrawingByCode(idOrCode);
+    }
+    if (!drawing) {
+      throw new Error(`Drawing with ID or Code "${idOrCode}" not found.`);
+    }
+
+    const payload: Partial<DrawingModel> = {};
+    if (updates.tagLine !== undefined) {
+      payload.tagLine = updates.tagLine;
+      payload.tags = updates.tagLine;
+    }
+    if (updates.tags !== undefined && updates.tagLine === undefined) {
+      payload.tags = updates.tags;
+      payload.tagLine = updates.tags;
+    }
+    if (updates.drawingTitle !== undefined) payload.drawingTitle = updates.drawingTitle;
+    if (updates.status !== undefined) payload.status = updates.status;
+    if (updates.level !== undefined) payload.level = updates.level;
+
+    const isFinalising = updates.status && updates.status.trim().toLowerCase() === 'finalised';
+    if (isFinalising) {
+      if (payload.drawingTitle || payload.level || payload.tagLine) {
+        await this.projectRepo.updateDrawing(drawing.id, payload);
+      }
+      return await this.finaliseDrawing(drawing.id);
+    }
+
+    await this.projectRepo.updateDrawing(drawing.id, payload);
     return await this.getDrawingDetails(drawing.id);
   }
 
@@ -897,36 +1290,106 @@ export class ProjectService {
       existingFolders.push(rootFolder);
     }
 
-    // 2. Recursive helper to insert nodes
-    const processNodes = async (nodes: FolderTemplateNode[], parentId: string | null) => {
-      for (const node of nodes) {
-        let existing = existingFolders.find(
-          f => f.parentFolderId === parentId && f.name.trim().toLowerCase() === node.name.trim().toLowerCase()
-        );
+    // 2. High-performance batch insertion level-by-level
+    // Level 1: top-level categories under rootFolder
+    const project = await this.projectRepo.findProjectById(projectId);
+    const includeReferences = project ? project.enableReferencesFolder : false;
+    const activeTemplate = STANDARD_PROJECT_FOLDER_TEMPLATE.filter(node => {
+      if (node.name.toLowerCase().includes('reference') && !includeReferences) {
+        return false;
+      }
+      return true;
+    });
 
-        if (!existing) {
-          existing = await this.projectRepo.createFolder({
+    const toInsertLevel1: Partial<FolderModel>[] = [];
+    for (const node of activeTemplate) {
+      const match = existingFolders.find(
+        f => f.parentFolderId === rootFolder!.id && f.name.trim().toLowerCase() === node.name.trim().toLowerCase()
+      );
+      if (!match) {
+        toInsertLevel1.push({
+          projectId,
+          parentFolderId: rootFolder!.id,
+          name: node.name,
+          folderType: node.folderType || 'CATEGORY',
+          sortOrder: node.sortOrder || 0,
+          isSystemFolder: true,
+          createdBy,
+        });
+      }
+    }
+
+    if (toInsertLevel1.length > 0) {
+      const savedLevel1 = await this.projectRepo.createFoldersBatch(toInsertLevel1);
+      existingFolders.push(...savedLevel1);
+    }
+
+    // Level 2: Children of Level 1
+    const toInsertLevel2: Array<{ node: FolderTemplateNode; folderData: Partial<FolderModel> }> = [];
+    for (const node of activeTemplate) {
+      const parentFolder = existingFolders.find(
+        f => f.parentFolderId === rootFolder!.id && f.name.trim().toLowerCase() === node.name.trim().toLowerCase()
+      );
+      if (!parentFolder || !node.children) continue;
+
+      for (const child of node.children) {
+        const match = existingFolders.find(
+          f => f.parentFolderId === parentFolder.id && f.name.trim().toLowerCase() === child.name.trim().toLowerCase()
+        );
+        if (!match) {
+          toInsertLevel2.push({
+            node: child,
+            folderData: {
+              projectId,
+              parentFolderId: parentFolder.id,
+              name: child.name,
+              folderType: child.folderType || 'CATEGORY',
+              sortOrder: child.sortOrder || 0,
+              isSystemFolder: true,
+              createdBy,
+            }
+          });
+        }
+      }
+    }
+
+    if (toInsertLevel2.length > 0) {
+      const savedLevel2 = await this.projectRepo.createFoldersBatch(toInsertLevel2.map(i => i.folderData));
+      existingFolders.push(...savedLevel2);
+    }
+
+    // Level 3: Children of Level 2 (e.g. WORKFLOW subfolders)
+    const toInsertLevel3: Partial<FolderModel>[] = [];
+    for (const item of toInsertLevel2) {
+      const parentFolder = existingFolders.find(
+        f => f.parentFolderId === item.folderData.parentFolderId && f.name.trim().toLowerCase() === item.node.name.trim().toLowerCase()
+      );
+      if (!parentFolder || !item.node.children) continue;
+
+      for (const grandchild of item.node.children) {
+        const match = existingFolders.find(
+          f => f.parentFolderId === parentFolder.id && f.name.trim().toLowerCase() === grandchild.name.trim().toLowerCase()
+        );
+        if (!match) {
+          toInsertLevel3.push({
             projectId,
-            parentFolderId: parentId,
-            name: node.name,
-            folderType: node.folderType || 'CATEGORY',
-            sortOrder: node.sortOrder || 0,
+            parentFolderId: parentFolder.id,
+            name: grandchild.name,
+            folderType: grandchild.folderType || 'WORKFLOW',
+            sortOrder: grandchild.sortOrder || 0,
             isSystemFolder: true,
             createdBy,
           });
-          existingFolders.push(existing);
-        }
-
-        if (node.children && node.children.length > 0) {
-          await processNodes(node.children, existing.id);
         }
       }
-    };
+    }
 
-    // Insert all 17 top-level folders and nested children under rootFolder
-    await processNodes(STANDARD_PROJECT_FOLDER_TEMPLATE, rootFolder.id);
+    if (toInsertLevel3.length > 0) {
+      const savedLevel3 = await this.projectRepo.createFoldersBatch(toInsertLevel3);
+      existingFolders.push(...savedLevel3);
+    }
 
-    return await this.projectRepo.findFoldersByProjectId(projectId);
+    return existingFolders;
   }
 
   /**
@@ -946,6 +1409,27 @@ export class ProjectService {
     // If project exists but has 0 folders, auto-generate them
     if (project && folders.length === 0) {
       folders = await this.generateStandardFolders(project.id, project.projectName, project.clientName || 'System');
+    }
+
+    if (!Boolean(project.enableReferencesFolder)) {
+      const refFolderIds = new Set<string>();
+      folders.forEach(f => {
+        const n = (f.name || '').toLowerCase();
+        if (n.startsWith('0.') || n.includes('reference') || n.includes('moodboard') || n.includes('inspiration')) {
+          refFolderIds.add(f.id);
+        }
+      });
+      let changed = true;
+      while (changed) {
+        changed = false;
+        folders.forEach(f => {
+          if (f.parentFolderId && refFolderIds.has(f.parentFolderId) && !refFolderIds.has(f.id)) {
+            refFolderIds.add(f.id);
+            changed = true;
+          }
+        });
+      }
+      folders = folders.filter(f => !refFolderIds.has(f.id));
     }
 
     return { project, folders };

@@ -30,11 +30,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, message: 'No file provided.' }, { status: 400 });
       }
 
-      const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+      const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB (accommodates DWG/CAD deliverable files)
       if (file.size > MAX_FILE_SIZE_BYTES) {
         return NextResponse.json({
           success: false,
-          message: 'File size exceeds the maximum permitted limit of 10 MB per file.'
+          message: 'File size exceeds the maximum permitted limit of 50 MB per file.'
         }, { status: 400 });
       }
 
@@ -42,8 +42,9 @@ export async function POST(req: NextRequest) {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
+      const isDwgOrCad = /\.(dwg|dxf|cad|rvt|ifc)$/i.test(file.name) || file.type.includes('acad') || file.type.includes('dwg');
       const isImageOrPdf = file.type.startsWith('image/') || file.type === 'application/pdf' || /\.(png|jpg|jpeg|webp|gif|svg|pdf)$/i.test(file.name);
-      const resourceType = isImageOrPdf ? 'auto' : 'raw';
+      const resourceType = isDwgOrCad ? 'raw' : (isImageOrPdf ? 'auto' : 'raw');
 
       let fileUrl = '';
       let publicId = '';
