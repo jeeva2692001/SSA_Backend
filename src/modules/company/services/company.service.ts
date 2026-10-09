@@ -13,6 +13,15 @@ export class CompanyService {
     return await this.companyRepository.findAll();
   }
 
+  async getCompanyById(companyId: string): Promise<CompanyModel | null> {
+    if (!companyId) return null;
+    let company = await this.companyRepository.findByCompanyId(companyId);
+    if (!company && !isNaN(Number(companyId))) {
+      company = await this.companyRepository.findById(Number(companyId));
+    }
+    return company;
+  }
+
   async registerCompany(companyData: Partial<CompanyModel>): Promise<CompanyModel> {
     if (!companyData.name || !companyData.email || !companyData.address || !companyData.contactPerson || !companyData.mobileNumber || !companyData.password || !companyData.gstNo || !companyData.panNo) {
       throw new Error('Missing required company fields.');
@@ -148,8 +157,14 @@ export class CompanyService {
       address: companyData.address?.trim(),
       mobileNumber: companyData.mobileNumber?.trim(),
       designation: companyData.designation?.trim(),
-      gstNo: companyData.gstNo?.trim().toUpperCase(),
-      panNo: companyData.panNo?.trim().toUpperCase(),
+      gstNo: (companyData.gstNo || (companyData as any).gstNumber)?.trim().toUpperCase(),
+      panNo: (companyData.panNo || (companyData as any).panNumber)?.trim().toUpperCase(),
+      legalEntity: (companyData as any).legalEntity?.trim() || 'Private Limited Company',
+      city: (companyData as any).city?.trim(),
+      state: (companyData as any).state?.trim(),
+      country: (companyData as any).country?.trim() || 'India',
+      website: (companyData as any).website?.trim(),
+      phone: (companyData as any).phone?.trim() || companyData.mobileNumber?.trim(),
       password: hashedPassword,
       isFirstLogin: true,
     };
@@ -277,12 +292,40 @@ export class CompanyService {
     }
     if (companyData.gstNo !== undefined) {
       if (!companyData.gstNo.trim()) throw new Error('GST number is required.');
-      company.gstNo = companyData.gstNo;
+      company.gstNo = companyData.gstNo.trim().toUpperCase();
+    } else if ((companyData as any).gstNumber !== undefined) {
+      company.gstNo = (companyData as any).gstNumber?.trim().toUpperCase();
     }
+
     if (companyData.panNo !== undefined) {
       if (!companyData.panNo.trim()) throw new Error('PAN number is required.');
-      company.panNo = companyData.panNo;
+      company.panNo = companyData.panNo.trim().toUpperCase();
+    } else if ((companyData as any).panNumber !== undefined) {
+      company.panNo = (companyData as any).panNumber?.trim().toUpperCase();
     }
+
+    if ((companyData as any).legalEntity !== undefined) {
+      company.legalEntity = (companyData as any).legalEntity?.trim();
+    }
+    if ((companyData as any).city !== undefined) {
+      company.city = (companyData as any).city?.trim();
+    }
+    if ((companyData as any).state !== undefined) {
+      company.state = (companyData as any).state?.trim();
+    }
+    if ((companyData as any).country !== undefined) {
+      company.country = (companyData as any).country?.trim();
+    }
+    if ((companyData as any).website !== undefined) {
+      company.website = (companyData as any).website?.trim();
+    }
+    if ((companyData as any).phone !== undefined) {
+      company.phone = (companyData as any).phone?.trim();
+      if (!company.mobileNumber && company.phone) {
+        company.mobileNumber = company.phone;
+      }
+    }
+
     if (companyData.status) company.status = companyData.status;
 
     if (companyData.password) {

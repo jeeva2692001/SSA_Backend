@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { LeadService } from '../services/lead.service';
+import { RbacService } from '../../rbac/services/rbac.service';
 
 export class LeadController {
   private leadService: LeadService;
+  private rbacService: RbacService;
 
   constructor() {
     this.leadService = new LeadService();
+    this.rbacService = new RbacService();
   }
 
   async getCategories(req: NextRequest) {
@@ -161,6 +164,14 @@ export class LeadController {
 
   async createLead(req: NextRequest, user: any) {
     try {
+      const canCreate = await this.rbacService.checkUserPermission(user, 'Create');
+      if (!canCreate) {
+        return NextResponse.json(
+          { success: false, message: 'Forbidden: Insufficient permissions to create leads (requires "Create" permission).' },
+          { status: 403 }
+        );
+      }
+
       const body = await req.json();
       const { categoryValues, ...leadData } = body;
 
@@ -212,6 +223,14 @@ export class LeadController {
 
   async updateLead(req: NextRequest, id: number, user: any) {
     try {
+      const canUpdate = await this.rbacService.checkUserPermission(user, 'Update');
+      if (!canUpdate) {
+        return NextResponse.json(
+          { success: false, message: 'Forbidden: Insufficient permissions to update leads (requires "Update" permission).' },
+          { status: 403 }
+        );
+      }
+
       const body = await req.json();
       const { categoryValues, ...leadData } = body;
 
@@ -247,6 +266,14 @@ export class LeadController {
 
   async deleteLead(req: NextRequest, id: number, user: any) {
     try {
+      const canDelete = await this.rbacService.checkUserPermission(user, 'Delete');
+      if (!canDelete) {
+        return NextResponse.json(
+          { success: false, message: 'Forbidden: Insufficient permissions to delete leads (requires "Delete" permission).' },
+          { status: 403 }
+        );
+      }
+
       const userContext = {
         companyId: user.companyId || '',
         branchId: user.branchId || null,

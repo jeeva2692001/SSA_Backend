@@ -39,6 +39,24 @@ export class CompanyModel {
   @Column({ type: 'varchar', nullable: true })
   panNo?: string;
 
+  @Column({ type: 'varchar', nullable: true, default: 'Private Limited Company' })
+  legalEntity?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  city?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  state?: string;
+
+  @Column({ type: 'varchar', nullable: true, default: 'India' })
+  country?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  website?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  phone?: string;
+
   @Column({ type: 'varchar', nullable: true })
   password?: string;
 

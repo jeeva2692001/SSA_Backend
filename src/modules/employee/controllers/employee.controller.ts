@@ -1,15 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { EmployeeService } from '../services/employee.service';
+import { RbacService } from '../../rbac/services/rbac.service';
 
 export class EmployeeController {
   private employeeService: EmployeeService;
+  private rbacService: RbacService;
 
   constructor() {
     this.employeeService = new EmployeeService();
+    this.rbacService = new RbacService();
   }
 
   async getAll(req: NextRequest, user: any): Promise<NextResponse> {
     try {
+      const canRead = await this.rbacService.checkUserPermission(user, 'Read');
+      if (!canRead) {
+        return NextResponse.json(
+          { message: 'Forbidden: You do not have "Read" permission for Employee directory.' },
+          { status: 403 }
+        );
+      }
       const companyId = user.companyId || user.userId;
       if (!companyId) {
         return NextResponse.json({ message: 'Company Identification is missing.' }, { status: 400 });
@@ -33,6 +43,14 @@ export class EmployeeController {
 
   async register(req: NextRequest, user: any): Promise<NextResponse> {
     try {
+      const canCreate = await this.rbacService.checkUserPermission(user, 'Create');
+      if (!canCreate) {
+        return NextResponse.json(
+          { message: 'Forbidden: You do not have "Create" permission to add employees.' },
+          { status: 403 }
+        );
+      }
+
       const companyId = user.companyId || user.userId;
       if (!companyId) {
         return NextResponse.json({ message: 'Company Identification is missing.' }, { status: 400 });
@@ -55,6 +73,14 @@ export class EmployeeController {
 
   async update(req: NextRequest, user: any): Promise<NextResponse> {
     try {
+      const canUpdate = await this.rbacService.checkUserPermission(user, 'Update');
+      if (!canUpdate) {
+        return NextResponse.json(
+          { message: 'Forbidden: You do not have "Update" permission to edit employees.' },
+          { status: 403 }
+        );
+      }
+
       const companyId = user.companyId || user.userId;
       if (!companyId) {
         return NextResponse.json({ message: 'Company Identification is missing.' }, { status: 400 });
@@ -95,6 +121,14 @@ export class EmployeeController {
 
   async delete(req: NextRequest, user: any): Promise<NextResponse> {
     try {
+      const canDelete = await this.rbacService.checkUserPermission(user, 'Delete');
+      if (!canDelete) {
+        return NextResponse.json(
+          { message: 'Forbidden: You do not have "Delete" permission to delete employees.' },
+          { status: 403 }
+        );
+      }
+
       const companyId = user.companyId || user.userId;
       if (!companyId) {
         return NextResponse.json({ message: 'Company Identification is missing.' }, { status: 400 });

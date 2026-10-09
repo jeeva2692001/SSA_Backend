@@ -637,6 +637,18 @@ async function main() {
     await projectService.seedMasterData();
     console.log('[DB-Init] Seeding Disciplines & Drawing Types Master complete.');
 
+    // Seed RBAC Permissions Matrix
+    const { RbacService } = require('../../modules/rbac/services/rbac.service');
+    const rbacService = new RbacService();
+    await rbacService.ensureSeeded();
+    console.log('[DB-Init] Seeding RBAC Permissions Matrix complete.');
+
+    // Seed Departments
+    const { DepartmentService } = require('../../modules/company/services/department.service');
+    const departmentService = new DepartmentService();
+    await departmentService.ensureSeeded();
+    console.log('[DB-Init] Seeding Departments complete.');
+
     console.log('[DB-Init] Database initialization complete.');
     
     process.exit(0);

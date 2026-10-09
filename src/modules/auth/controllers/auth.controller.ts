@@ -105,10 +105,15 @@ export class AuthController {
 
   async getProfile(req: NextRequest, currentUser: any): Promise<NextResponse> {
     try {
+      const { RbacService } = await import('../../rbac/services/rbac.service');
+      const rbacService = new RbacService();
+      const permissions = await rbacService.getUserPermissions(currentUser.role);
+
       if (currentUser.role === 'Company') {
         const companyResponse = {
           id: currentUser.companyId,
           userId: currentUser.companyId,
+          companyId: currentUser.companyId,
           name: currentUser.name,
           email: currentUser.email,
           role: 'Company',
@@ -116,6 +121,7 @@ export class AuthController {
           status: currentUser.status,
           // [FEATURE PAUSED] Re-enable in future: mustChangePassword: !!currentUser.isFirstLogin,
           mustChangePassword: false,
+          permissions,
         };
         return NextResponse.json(companyResponse, { status: 200 });
       }
@@ -132,6 +138,7 @@ export class AuthController {
           companyId: currentUser.companyId,
           // [FEATURE PAUSED] Re-enable in future: mustChangePassword: !!currentUser.isFirstLogin,
           mustChangePassword: false,
+          permissions,
         };
         return NextResponse.json(branchResponse, { status: 200 });
       }
@@ -145,6 +152,7 @@ export class AuthController {
         avatar: currentUser.avatar,
         // [FEATURE PAUSED] Re-enable in future: mustChangePassword: currentUser.role === 'Super Admin' ? false : (currentUser.isFirstLogin ?? false),
         mustChangePassword: false,
+        permissions,
       };
       return NextResponse.json(userResponse, { status: 200 });
     } catch (error: any) {

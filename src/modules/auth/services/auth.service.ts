@@ -7,16 +7,20 @@ import { CompanyModel } from '../../company/models/company.model';
 import { BranchModel } from '../../branch/models/branch.model';
 import { getDataSource } from '../../../shared/config/data-source';
 
+import { RbacService } from '../../rbac/services/rbac.service';
+
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-key-for-architect-erp';
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '1d';
 
 export class AuthService {
   private userRepository: UserRepository;
   private companyRepository: CompanyRepository;
+  private rbacService: RbacService;
 
   constructor() {
     this.userRepository = new UserRepository();
     this.companyRepository = new CompanyRepository();
+    this.rbacService = new RbacService();
   }
 
   async companyLogin(username: string, password: string): Promise<{ user: any; token: string; mustChangePassword?: boolean; maskedEmail?: string; username?: string; name?: string; role?: string }> {
@@ -91,15 +95,19 @@ export class AuthService {
       { expiresIn: JWT_EXPIRY as any }
     );
 
+    const permissions = await this.rbacService.getUserPermissions('Company');
+
     const companyResponse = {
       id: company.companyId,
       userId: company.companyId,
+      companyId: company.companyId,
       name: company.name,
       email: company.email,
       role: 'Company',
       contactPerson: company.contactPerson,
       status: company.status,
       mustChangePassword: false,
+      permissions,
     };
 
     return { user: companyResponse, token };
@@ -160,6 +168,8 @@ export class AuthService {
         { expiresIn: JWT_EXPIRY as any }
       );
 
+      const permissions = await this.rbacService.getUserPermissions(user.role);
+
       const userResponse = {
         id: `USR-${String(user.id).padStart(3, '0')}`,
         userId: user.userId,
@@ -168,6 +178,7 @@ export class AuthService {
         role: user.role,
         avatar: user.avatar,
         mustChangePassword: false,
+        permissions,
       };
 
       return { user: userResponse, token };
@@ -239,6 +250,8 @@ export class AuthService {
         { expiresIn: JWT_EXPIRY as any }
       );
 
+      const permissions = await this.rbacService.getUserPermissions('Company');
+
       const companyResponse = {
         id: company.companyId,
         userId: company.companyId,
@@ -248,6 +261,7 @@ export class AuthService {
         contactPerson: company.contactPerson,
         status: company.status,
         mustChangePassword: false,
+        permissions,
       };
 
       return { user: companyResponse, token };
@@ -312,6 +326,8 @@ export class AuthService {
         { expiresIn: JWT_EXPIRY as any }
       );
 
+      const permissions = await this.rbacService.getUserPermissions('Branch');
+
       const branchResponse = {
         id: branch.branchId,
         userId: branch.branchId,
@@ -321,6 +337,7 @@ export class AuthService {
         manager: branch.manager,
         companyId: branch.companyId,
         mustChangePassword: false,
+        permissions,
       };
 
       return { user: branchResponse, token };
@@ -686,14 +703,32 @@ export class AuthService {
     return await this.userRepository.findById(id);
   }
 
-  async getCompanyById(id: number): Promise<CompanyModel | null> {
-    return await this.companyRepository.findById(id);
+  async getCompanyById(id: number | string): Promise<CompanyModel | null> {
+    if (!id) return null;
+    if (typeof id === 'string' && isNaN(Number(id))) {
+      return await this.companyRepository.findByCompanyId(id);
+    }
+    const num = Number(id);
+    if (!isNaN(num)) {
+      const byNum = await this.companyRepository.findById(num);
+      if (byNum) return byNum;
+    }
+    return await this.companyRepository.findByCompanyId(String(id));
   }
 
-  async getBranchById(id: number): Promise<BranchModel | null> {
+  async getBranchById(id: number | string): Promise<BranchModel | null> {
+    if (!id) return null;
     const dataSource = await getDataSource();
     const branchRepo = dataSource.getRepository(BranchModel);
-    return await branchRepo.findOne({ where: { id } });
+    if (typeof id === 'string' && isNaN(Number(id))) {
+      return await branchRepo.findOne({ where: [{ branchId: id }, { code: id }] });
+    }
+    const num = Number(id);
+    if (!isNaN(num)) {
+      const byNum = await branchRepo.findOne({ where: { id: num } });
+      if (byNum) return byNum;
+    }
+    return await branchRepo.findOne({ where: { branchId: String(id) } });
   }
 
   async branchLogin(username: string, password: string): Promise<{ user: any; token: string }> {

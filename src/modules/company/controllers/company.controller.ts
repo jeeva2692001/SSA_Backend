@@ -8,8 +8,25 @@ export class CompanyController {
     this.companyService = new CompanyService();
   }
 
-  async getAll(req: NextRequest): Promise<NextResponse> {
+  async getAll(req: NextRequest, user?: any): Promise<NextResponse> {
     try {
+      const { searchParams } = new URL(req.url);
+      const queryCompanyId = searchParams.get('companyId') || searchParams.get('id');
+
+      // If logged in user is NOT Super Admin, return only their company
+      if (user && user.role !== 'Super Admin') {
+        const targetCompanyId = user.companyId || (user.role === 'Company' ? user.userId : user.companyId) || user.id;
+        if (targetCompanyId) {
+          const company = await this.companyService.getCompanyById(targetCompanyId);
+          return NextResponse.json(company ? [company] : [], { status: 200 });
+        }
+      }
+
+      if (queryCompanyId) {
+        const company = await this.companyService.getCompanyById(queryCompanyId);
+        return NextResponse.json(company ? [company] : [], { status: 200 });
+      }
+
       const companies = await this.companyService.getAllCompanies();
       return NextResponse.json(companies, { status: 200 });
     } catch (error: any) {
@@ -38,16 +55,19 @@ export class CompanyController {
   async update(req: NextRequest): Promise<NextResponse> {
     try {
       const body = await req.json();
-      const { companyId, ...updateData } = body;
+      const { searchParams } = new URL(req.url);
+      const queryId = searchParams.get('companyId') || searchParams.get('id');
+      const targetCompanyId = body.companyId || body.id || queryId;
 
-      if (!companyId) {
+      if (!targetCompanyId) {
         return NextResponse.json(
-          { message: 'Company ID (companyId) is required for update.' },
+          { message: 'Company ID (companyId or id) is required for update.' },
           { status: 400 }
         );
       }
 
-      const company = await this.companyService.updateCompany(companyId, updateData);
+      const { companyId, id, ...updateData } = body;
+      const company = await this.companyService.updateCompany(targetCompanyId, updateData);
       return NextResponse.json(company, { status: 200 });
     } catch (error: any) {
       console.error('Error in CompanyController.update:', error.message);
