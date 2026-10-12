@@ -649,6 +649,18 @@ async function main() {
     await departmentService.ensureSeeded();
     console.log('[DB-Init] Seeding Departments complete.');
 
+    // Seed Invoices & Billing
+    const { InvoiceService } = require('../../modules/billing/services/invoice.service');
+    const invoiceService = new InvoiceService();
+    await invoiceService.ensureSeeded();
+    console.log('[DB-Init] Seeding Invoices complete.');
+
+    // Seed Opportunities (Deals Pipeline)
+    const { OpportunityService } = require('../../modules/lead/services/opportunity.service');
+    const oppService = new OpportunityService();
+    await oppService.ensureSeeded();
+    console.log('[DB-Init] Seeding Opportunities complete.');
+
     console.log('[DB-Init] Database initialization complete.');
     
     process.exit(0);

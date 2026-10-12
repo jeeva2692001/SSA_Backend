@@ -119,6 +119,17 @@ export class AuthController {
           role: 'Company',
           contactPerson: currentUser.contactPerson,
           status: currentUser.status,
+          currency: currentUser.currency || 'INR',
+          website: currentUser.website || '',
+          phone: currentUser.phone || currentUser.mobileNumber || '',
+          mobileNumber: currentUser.mobileNumber || currentUser.phone || '',
+          address: currentUser.address || '',
+          city: currentUser.city || '',
+          state: currentUser.state || '',
+          country: currentUser.country || 'India',
+          legalEntity: currentUser.legalEntity || 'Private Limited Company',
+          gstNo: currentUser.gstNo || '',
+          panNo: currentUser.panNo || '',
           // [FEATURE PAUSED] Re-enable in future: mustChangePassword: !!currentUser.isFirstLogin,
           mustChangePassword: false,
           permissions,
@@ -160,6 +171,20 @@ export class AuthController {
       return NextResponse.json(
         { message: 'Failed to retrieve profile.' },
         { status: 500 }
+      );
+    }
+  }
+
+  async updateProfile(req: NextRequest, currentUser: any): Promise<NextResponse> {
+    try {
+      const body = await req.json();
+      const updatedUser = await this.authService.updateProfile(currentUser, body);
+      return NextResponse.json(updatedUser, { status: 200 });
+    } catch (error: any) {
+      console.error('Error in AuthController.updateProfile:', error.message);
+      return NextResponse.json(
+        { message: error.message || 'Failed to update profile.' },
+        { status: 400 }
       );
     }
   }

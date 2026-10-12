@@ -347,8 +347,11 @@ export class ProjectController {
         filePath: body.filePath,
         fileType: body.fileType,
         fileSize: body.fileSize,
-        tagLine: body.tagLine,
-        tags: body.tags,
+        tagLine: body.tagLine || body.tag,
+        tags: body.tags || body.tag,
+        tag: body.tag || body.tagLine || body.tags,
+        areaOfUsage: body.areaOfUsage,
+        drawingType: body.drawingType,
         uploadedBy: user?.name || user?.email || 'User'
       }, companyId);
       return NextResponse.json({ success: true, data: file });
@@ -361,13 +364,20 @@ export class ProjectController {
   async renameProjectFile(req: NextRequest, fileId: string, user: any) {
     try {
       const body = await req.json();
-      if (!body.fileName && body.tagLine === undefined && body.tags === undefined) {
-        return NextResponse.json({ success: false, message: 'fileName, tagLine, or tags is required.' }, { status: 400 });
+      if (!body.fileName && body.tagLine === undefined && body.tags === undefined && body.tag === undefined && body.areaOfUsage === undefined && body.drawingType === undefined) {
+        return NextResponse.json({ success: false, message: 'At least one field to update is required.' }, { status: 400 });
       }
       const updates: any = {};
       if (body.fileName) updates.fileName = body.fileName.trim();
       if (body.tagLine !== undefined) updates.tagLine = body.tagLine ? body.tagLine.trim() : null;
       if (body.tags !== undefined) updates.tags = body.tags ? body.tags.trim() : null;
+      if (body.tag !== undefined) {
+        updates.tag = body.tag ? body.tag.trim() : null;
+        updates.tagLine = updates.tag;
+        updates.tags = updates.tag;
+      }
+      if (body.areaOfUsage !== undefined) updates.areaOfUsage = body.areaOfUsage ? body.areaOfUsage.trim() : null;
+      if (body.drawingType !== undefined) updates.drawingType = body.drawingType ? body.drawingType.trim() : null;
 
       const updated = await this.projectService.updateProjectFile(fileId, updates);
       return NextResponse.json({ success: true, data: updated });

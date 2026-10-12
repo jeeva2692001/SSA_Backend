@@ -24,9 +24,12 @@ import {
   DrawingRevisionModel,
   DrawingFileModel,
   FolderModel,
-  ProjectFileModel
+  ProjectFileModel,
+  MilestoneModel
 } from "../../modules/project";
 import { RolePermissionModel } from "../../modules/rbac/models/role-permission.model";
+import { InvoiceModel } from "../../modules/billing/models/invoice.model";
+import { OpportunityModel } from "../../modules/lead/models/opportunity.model";
 
 
 const globalRef = global as unknown as { AppDataSource: DataSource | undefined };
@@ -55,7 +58,10 @@ const entitiesList = [
   DrawingFileModel,
   FolderModel,
   ProjectFileModel,
-  RolePermissionModel
+  RolePermissionModel,
+  InvoiceModel,
+  OpportunityModel,
+  MilestoneModel
 ];
 
 const createDataSource = () => new DataSource({
@@ -84,8 +90,17 @@ if (globalRef.AppDataSource) {
   const hasDepartment = (globalRef.AppDataSource.options.entities as any[])?.some(
     e => (typeof e === 'function' && e.name === 'DepartmentModel') || (e && (e as any).name === 'DepartmentModel')
   );
-  if (!hasRolePermission || !hasDepartment) {
-    console.log('[DataSource] Updating entities list on cached AppDataSource to include new models (DepartmentModel)...');
+  const hasInvoice = (globalRef.AppDataSource.options.entities as any[])?.some(
+    e => (typeof e === 'function' && e.name === 'InvoiceModel') || (e && (e as any).name === 'InvoiceModel')
+  );
+  const hasOpportunity = (globalRef.AppDataSource.options.entities as any[])?.some(
+    e => (typeof e === 'function' && e.name === 'OpportunityModel') || (e && (e as any).name === 'OpportunityModel')
+  );
+  const hasMilestone = (globalRef.AppDataSource.options.entities as any[])?.some(
+    e => (typeof e === 'function' && e.name === 'MilestoneModel') || (e && (e as any).name === 'MilestoneModel')
+  );
+  if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity || !hasMilestone) {
+    console.log('[DataSource] Updating entities list on cached AppDataSource to include new models (OpportunityModel, InvoiceModel, DepartmentModel, MilestoneModel)...');
     try {
       if (globalRef.AppDataSource.isInitialized) {
         globalRef.AppDataSource.destroy();
@@ -154,8 +169,14 @@ export async function getDataSource() {
     const hasDepartment = AppDataSource.entityMetadatas.some(
       m => m.name === 'DepartmentModel' || m.tableName === 'departments'
     );
-    if (!hasRolePermission || !hasDepartment) {
-      console.log('[DataSource] Re-creating AppDataSource to load new entities (DepartmentModel / RolePermissionModel)...');
+    const hasInvoice = AppDataSource.entityMetadatas.some(
+      m => m.name === 'InvoiceModel' || m.tableName === 'invoices'
+    );
+    const hasOpportunity = AppDataSource.entityMetadatas.some(
+      m => m.name === 'OpportunityModel' || m.tableName === 'opportunities'
+    );
+    if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity) {
+      console.log('[DataSource] Re-creating AppDataSource to load new entities (OpportunityModel / InvoiceModel / DepartmentModel / RolePermissionModel)...');
       try {
         await AppDataSource.destroy();
       } catch {}
@@ -232,6 +253,24 @@ export async function getDataSource() {
       await departmentService.ensureSeeded();
     } catch (err) {
       console.error('[Seed] Error seeding default departments:', err);
+    }
+
+    // Seed default Invoices / Billing records
+    try {
+      const { InvoiceService } = await import('../../modules/billing/services/invoice.service');
+      const invoiceService = new InvoiceService();
+      await invoiceService.ensureSeeded();
+    } catch (err) {
+      console.error('[Seed] Error seeding default invoices:', err);
+    }
+
+    // Seed default Opportunities / Deals
+    try {
+      const { OpportunityService } = await import('../../modules/lead/services/opportunity.service');
+      const oppService = new OpportunityService();
+      await oppService.ensureSeeded();
+    } catch (err) {
+      console.error('[Seed] Error seeding default opportunities:', err);
     }
   }
   return AppDataSource;

@@ -291,17 +291,15 @@ export class CompanyService {
       company.designation = companyData.designation;
     }
     if (companyData.gstNo !== undefined) {
-      if (!companyData.gstNo.trim()) throw new Error('GST number is required.');
-      company.gstNo = companyData.gstNo.trim().toUpperCase();
+      company.gstNo = companyData.gstNo ? companyData.gstNo.trim().toUpperCase() : undefined;
     } else if ((companyData as any).gstNumber !== undefined) {
-      company.gstNo = (companyData as any).gstNumber?.trim().toUpperCase();
+      company.gstNo = (companyData as any).gstNumber ? (companyData as any).gstNumber.trim().toUpperCase() : undefined;
     }
 
     if (companyData.panNo !== undefined) {
-      if (!companyData.panNo.trim()) throw new Error('PAN number is required.');
-      company.panNo = companyData.panNo.trim().toUpperCase();
+      company.panNo = companyData.panNo ? companyData.panNo.trim().toUpperCase() : undefined;
     } else if ((companyData as any).panNumber !== undefined) {
-      company.panNo = (companyData as any).panNumber?.trim().toUpperCase();
+      company.panNo = (companyData as any).panNumber ? (companyData as any).panNumber.trim().toUpperCase() : undefined;
     }
 
     if ((companyData as any).legalEntity !== undefined) {
@@ -324,6 +322,9 @@ export class CompanyService {
       if (!company.mobileNumber && company.phone) {
         company.mobileNumber = company.phone;
       }
+    }
+    if ((companyData as any).currency !== undefined) {
+      company.currency = (companyData as any).currency?.trim();
     }
 
     if (companyData.status) company.status = companyData.status;

@@ -48,6 +48,15 @@ export class DrawingModel {
   @Column({ type: 'varchar', nullable: true })
   tags?: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  tag?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  areaOfUsage?: string; // e.g. "Master Bedroom", "Living Room", "Kitchen", "Whole Campus"
+
+  @Column({ type: 'varchar', nullable: true })
+  drawingTypeCode?: string; // e.g. "PLN", "SEC", "ELE", "DET", "PWR", etc.
+
   @Column({ type: 'boolean', default: false })
   coordinationFlag!: boolean; // Set to true if upstream architecture drawing was revised
 

@@ -57,6 +57,9 @@ export class CompanyModel {
   @Column({ type: 'varchar', nullable: true })
   phone?: string;
 
+  @Column({ type: 'varchar', nullable: true, default: 'INR' })
+  currency?: string;
+
   @Column({ type: 'varchar', nullable: true })
   password?: string;
 

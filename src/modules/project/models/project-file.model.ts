@@ -30,6 +30,15 @@ export class ProjectFileModel {
   tags?: string;
 
   @Column({ type: 'varchar', nullable: true })
+  tag?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  areaOfUsage?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  drawingType?: string;
+
+  @Column({ type: 'varchar', nullable: true })
   uploadedBy?: string;
 
   @Column({ type: 'varchar', default: 'DRAFT' })

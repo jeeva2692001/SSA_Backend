@@ -23,6 +23,24 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
+  const authHeader = req.headers.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return await authMiddleware(req, async (user: any) => {
+      return await companyController.update(req, user);
+    });
+  }
+  return await companyMiddleware(req, async () => {
+    return await companyController.update(req);
+  });
+}
+
+export async function PATCH(req: NextRequest) {
+  const authHeader = req.headers.get('authorization');
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return await authMiddleware(req, async (user: any) => {
+      return await companyController.update(req, user);
+    });
+  }
   return await companyMiddleware(req, async () => {
     return await companyController.update(req);
   });

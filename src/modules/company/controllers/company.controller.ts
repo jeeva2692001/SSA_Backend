@@ -52,12 +52,12 @@ export class CompanyController {
     }
   }
 
-  async update(req: NextRequest): Promise<NextResponse> {
+  async update(req: NextRequest, currentUser?: any): Promise<NextResponse> {
     try {
       const body = await req.json();
       const { searchParams } = new URL(req.url);
       const queryId = searchParams.get('companyId') || searchParams.get('id');
-      const targetCompanyId = body.companyId || body.id || queryId;
+      const targetCompanyId = body.companyId || body.id || queryId || currentUser?.companyId || (currentUser?.role === 'Company' ? (currentUser.companyId || currentUser.userId) : undefined);
 
       if (!targetCompanyId) {
         return NextResponse.json(
