@@ -333,6 +333,19 @@ export class ClientService {
         console.warn('[ClientService] Note syncing enableReferencesFolder to projects:', pErr);
       }
     }
+
+    if (data.allowClientDownload !== undefined) {
+      try {
+        const isDownload = Boolean(data.allowClientDownload);
+        const clientProjects = await this.clientRepo.findProjectsByClientId(id, existing.clientName || existing.company);
+        const projectRepo = await (this.clientRepo as any).getProjectRepo();
+        for (const p of clientProjects) {
+          await projectRepo.update(p.id, { allowClientDownload: isDownload });
+        }
+      } catch (pErr) {
+        console.warn('[ClientService] Note syncing allowClientDownload to projects:', pErr);
+      }
+    }
     return updated!;
   }
 

@@ -116,6 +116,7 @@ export class ProjectService {
       employeeId?: string;
     }>;
     enableReferencesFolder?: boolean;
+    allowClientDownload?: boolean;
   }) {
     await this.seedMasterData();
 
@@ -230,6 +231,7 @@ export class ProjectService {
       teamMembers: teamMembersProcessed.length > 0 ? JSON.stringify(teamMembersProcessed) : undefined,
       status: 'Active',
       enableReferencesFolder: Boolean(input.enableReferencesFolder),
+      allowClientDownload: Boolean(input.allowClientDownload),
     });
 
     // 2. Activate Selected Disciplines (Only create what user selected)
@@ -526,6 +528,7 @@ export class ProjectService {
       result.push({
         ...p,
         enableReferencesFolder: isRefEnabled,
+        allowClientDownload: Boolean(p.allowClientDownload),
         floors: this.safeParseFloors(p.floors),
         disciplines: uniqueDisciplines,
         drawingsCount: drawings.length
@@ -641,6 +644,7 @@ export class ProjectService {
     return {
       ...project,
       enableReferencesFolder: isRefEnabled,
+      allowClientDownload: Boolean(project.allowClientDownload),
       floors: this.safeParseFloors(project.floors),
       disciplines: uniqueDisciplines,
       drawingsCount: drawings.length,
