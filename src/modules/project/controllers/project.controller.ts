@@ -352,6 +352,7 @@ export class ProjectController {
         tag: body.tag || body.tagLine || body.tags,
         areaOfUsage: body.areaOfUsage,
         drawingType: body.drawingType,
+        isTemporary: body.isTemporary ? Boolean(body.isTemporary) : false,
         uploadedBy: user?.name || user?.email || 'User'
       }, companyId);
       return NextResponse.json({ success: true, data: file });
@@ -364,7 +365,7 @@ export class ProjectController {
   async renameProjectFile(req: NextRequest, fileId: string, user: any) {
     try {
       const body = await req.json();
-      if (!body.fileName && body.tagLine === undefined && body.tags === undefined && body.tag === undefined && body.areaOfUsage === undefined && body.drawingType === undefined) {
+      if (!body.fileName && body.tagLine === undefined && body.tags === undefined && body.tag === undefined && body.areaOfUsage === undefined && body.drawingType === undefined && body.isTemporary === undefined) {
         return NextResponse.json({ success: false, message: 'At least one field to update is required.' }, { status: 400 });
       }
       const updates: any = {};
@@ -378,6 +379,7 @@ export class ProjectController {
       }
       if (body.areaOfUsage !== undefined) updates.areaOfUsage = body.areaOfUsage ? body.areaOfUsage.trim() : null;
       if (body.drawingType !== undefined) updates.drawingType = body.drawingType ? body.drawingType.trim() : null;
+      if (body.isTemporary !== undefined) updates.isTemporary = Boolean(body.isTemporary);
 
       const updated = await this.projectService.updateProjectFile(fileId, updates);
       return NextResponse.json({ success: true, data: updated });

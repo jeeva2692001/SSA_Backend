@@ -57,6 +57,18 @@ export class DrawingModel {
   @Column({ type: 'varchar', nullable: true })
   drawingTypeCode?: string; // e.g. "PLN", "SEC", "ELE", "DET", "PWR", etc.
 
+  @Column({ type: 'varchar', nullable: true })
+  preparedBy?: string; // Employee who drafted / authored the drawing
+
+  @Column({ type: 'varchar', nullable: true })
+  checkedBy?: string; // Employee who checked the drawing
+
+  @Column({ type: 'varchar', nullable: true })
+  approvedBy?: string; // Employee / Director who approved the drawing
+
+  @Column({ type: 'boolean', default: false })
+  isTemporary!: boolean;
+
   @Column({ type: 'boolean', default: false })
   coordinationFlag!: boolean; // Set to true if upstream architecture drawing was revised
 

@@ -38,6 +38,9 @@ export class ProjectFileModel {
   @Column({ type: 'varchar', nullable: true })
   drawingType?: string;
 
+  @Column({ type: 'boolean', default: false })
+  isTemporary!: boolean;
+
   @Column({ type: 'varchar', nullable: true })
   uploadedBy?: string;
 

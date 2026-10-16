@@ -824,6 +824,12 @@ export class ProjectService {
     const drawingCode = input.drawingCode || input.drawingNumber || `${project.projectCode}-${discCode}-${level}-${String(seq).padStart(3, '0')}`;
 
     const tagVal = input.tag || input.tagLine || input.tags || null;
+    if (tagVal && typeof tagVal === 'string' && tagVal.trim()) {
+      const tagList = tagVal.split(',').map((t: string) => t.trim()).filter(Boolean);
+      if (tagList.length < 4) {
+        throw new Error(`A minimum of 4 tags must be added for each drawing (currently ${tagList.length} provided).`);
+      }
+    }
     const areaOfUsageVal = input.areaOfUsage || null;
     const drawingTypeCodeVal = input.drawingTypeCode || input.drawingType || null;
     const drawingTypeIdVal = input.drawingTypeId || null;
@@ -845,6 +851,10 @@ export class ProjectService {
         tagLine: tagVal,
         tags: tagVal,
         tag: tagVal,
+        preparedBy: input.preparedBy || null,
+        checkedBy: input.checkedBy || null,
+        approvedBy: input.approvedBy || null,
+        isTemporary: Boolean(input.isTemporary ?? false),
       });
     } else {
       drawing = await this.projectRepo.updateDrawing(drawing.id, {
@@ -854,9 +864,13 @@ export class ProjectService {
         tagLine: tagVal || drawing.tagLine,
         tags: tagVal || drawing.tags,
         tag: tagVal || drawing.tag,
+        preparedBy: input.preparedBy !== undefined ? input.preparedBy : drawing.preparedBy,
+        checkedBy: input.checkedBy !== undefined ? input.checkedBy : drawing.checkedBy,
+        approvedBy: input.approvedBy !== undefined ? input.approvedBy : drawing.approvedBy,
         areaOfUsage: areaOfUsageVal !== null ? areaOfUsageVal : drawing.areaOfUsage,
         drawingTypeCode: drawingTypeCodeVal || drawing.drawingTypeCode,
         drawingTypeId: drawingTypeIdVal || drawing.drawingTypeId,
+        isTemporary: input.isTemporary !== undefined ? Boolean(input.isTemporary) : drawing.isTemporary,
       });
     }
 
@@ -924,6 +938,13 @@ export class ProjectService {
 
     return {
       ...drawing,
+      tag: drawing.tag || drawing.tags || drawing.tagLine || '',
+      tagLine: drawing.tagLine || drawing.tag || drawing.tags || '',
+      tags: drawing.tags || drawing.tag || drawing.tagLine || '',
+      areaOfUsage: drawing.areaOfUsage || '',
+      drawingType: drawing.drawingTypeCode || (drawing as any).drawingType?.code || (drawing as any).drawingType?.title || '',
+      drawingTypeCode: drawing.drawingTypeCode || (drawing as any).drawingType?.code || '',
+      drawingNumber: drawing.drawingCode,
       projectCode: project?.projectCode,
       projectName: project?.projectName,
       revisions: populatedRevisions
@@ -1149,6 +1170,14 @@ export class ProjectService {
       throw new Error(`Drawing with ID or Code "${idOrCode}" not found.`);
     }
 
+    const newTagValue = updates.tagLine !== undefined ? updates.tagLine : updates.tags !== undefined ? updates.tags : (updates as any).tag;
+    if (newTagValue !== undefined && typeof newTagValue === 'string' && newTagValue.trim()) {
+      const tagList = newTagValue.split(',').map((t: string) => t.trim()).filter(Boolean);
+      if (tagList.length < 4) {
+        throw new Error(`A minimum of 4 tags must be added for each drawing (currently ${tagList.length} provided).`);
+      }
+    }
+
     const payload: Partial<DrawingModel> = {};
     if (updates.tagLine !== undefined) {
       payload.tagLine = updates.tagLine;
@@ -1180,6 +1209,9 @@ export class ProjectService {
     if (updates.drawingTitle !== undefined) payload.drawingTitle = updates.drawingTitle;
     if (updates.status !== undefined) payload.status = updates.status;
     if (updates.level !== undefined) payload.level = updates.level;
+    if ((updates as any).isTemporary !== undefined) {
+      payload.isTemporary = Boolean((updates as any).isTemporary);
+    }
 
     const isFinalising = updates.status && updates.status.trim().toLowerCase() === 'finalised';
     if (isFinalising) {
@@ -1581,6 +1613,7 @@ export class ProjectService {
     tag?: string;
     areaOfUsage?: string;
     drawingType?: string;
+    isTemporary?: boolean;
     uploadedBy?: string;
   }, companyId?: string): Promise<ProjectFileModel> {
     let project = await this.projectRepo.findProjectById(input.projectId, companyId);
@@ -1605,6 +1638,7 @@ export class ProjectService {
       tag: tagVal,
       areaOfUsage: input.areaOfUsage ? input.areaOfUsage.trim() : undefined,
       drawingType: input.drawingType ? input.drawingType.trim() : undefined,
+      isTemporary: input.isTemporary ?? false,
       uploadedBy: input.uploadedBy || 'User',
     });
   }
