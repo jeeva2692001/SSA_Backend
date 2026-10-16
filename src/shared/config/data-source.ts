@@ -30,9 +30,12 @@ import {
 import { RolePermissionModel } from "../../modules/rbac/models/role-permission.model";
 import { InvoiceModel } from "../../modules/billing/models/invoice.model";
 import { OpportunityModel } from "../../modules/lead/models/opportunity.model";
-
-
-const globalRef = global as unknown as { AppDataSource: DataSource | undefined };
+import {
+  ClientBriefModel,
+  MomModel,
+  SiteReportModel,
+  MaterialApprovalModel
+} from "../../modules/document/models";
 
 const entitiesList = [
   TestModel, 
@@ -61,67 +64,12 @@ const entitiesList = [
   RolePermissionModel,
   InvoiceModel,
   OpportunityModel,
-  MilestoneModel
-];
-
-const createDataSource = () => new DataSource({
-  type: "postgres",
-  ...(envConfig.database.url
-    ? { url: envConfig.database.url }
-    : {
-        host: envConfig.database.host,
-        port: envConfig.database.port,
-        username: envConfig.database.username,
-        password: envConfig.database.password,
-        database: envConfig.database.database,
-      }),
-  ssl: envConfig.database.ssl,
-  synchronize: true,
-  logging: true,
-  entities: entitiesList,
-  migrations: [],
-  subscribers: [],
-});
-
-if (globalRef.AppDataSource) {
-  const hasRolePermission = (globalRef.AppDataSource.options.entities as any[])?.some(
-    e => (typeof e === 'function' && e.name === 'RolePermissionModel') || (e && (e as any).name === 'RolePermissionModel')
-  );
-  const hasDepartment = (globalRef.AppDataSource.options.entities as any[])?.some(
-    e => (typeof e === 'function' && e.name === 'DepartmentModel') || (e && (e as any).name === 'DepartmentModel')
-  );
-  const hasInvoice = (globalRef.AppDataSource.options.entities as any[])?.some(
-    e => (typeof e === 'function' && e.name === 'InvoiceModel') || (e && (e as any).name === 'InvoiceModel')
-  );
-  const hasOpportunity = (globalRef.AppDataSource.options.entities as any[])?.some(
-    e => (typeof e === 'function' && e.name === 'OpportunityModel') || (e && (e as any).name === 'OpportunityModel')
-  );
-  const hasMilestone = (globalRef.AppDataSource.options.entities as any[])?.some(
-    e => (typeof e === 'function' && e.name === 'MilestoneModel') || (e && (e as any).name === 'MilestoneModel')
-  );
-  if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity || !hasMilestone) {
-    console.log('[DataSource] Updating entities list on cached AppDataSource to include new models (OpportunityModel, InvoiceModel, DepartmentModel, MilestoneModel)...');
-    try {
-      if (globalRef.AppDataSource.isInitialized) {
-        globalRef.AppDataSource.destroy();
-      }
-    } catch {}
-    globalRef.AppDataSource = createDataSource();
-  }
-}
-
-export let AppDataSource = globalRef.AppDataSource || createDataSource();
-
-// Safe getMetadata & getRepository wrapper to handle Next.js / Turbopack HMR class identity changes
-if (!(AppDataSource as any).__safeGetRepositoryPatched) {
-  const origFindMetadata = (AppDataSource as any).findMetadata?.bind(AppDataSource);
-  (AppDataSource as any).findMetadata = function (target: any) {
-import {
+  MilestoneModel,
   ClientBriefModel,
   MomModel,
   SiteReportModel,
   MaterialApprovalModel
-} from "../../modules/document/models";
+];
 
 export function createDataSource(): DataSource {
   return new DataSource({
@@ -138,42 +86,11 @@ export function createDataSource(): DataSource {
     ssl: envConfig.database.ssl,
     synchronize: true,
     logging: true,
-    entities: [
-      TestModel, 
-      UserModel, 
-      CompanyModel, 
-      EmployeeModel, 
-      BranchModel,
-      ClientModel,
-      ProjectCategoryModel,
-      CategoryTaglineModel,
-      CategoryTemplateFieldModel,
-      LeadModel,
-      LeadRequirementValueModel,
-      DeliverableTemplateModel,
-      LeadDeliverableModel,
-      ProjectModel,
-      DisciplineModel,
-      ProjectDisciplineModel,
-      DrawingTypeModel,
-      DrawingModel,
-      DrawingRevisionModel,
-      DrawingFileModel,
-      FolderModel,
-      ProjectFileModel,
-      ClientBriefModel,
-      MomModel,
-      SiteReportModel,
-      MaterialApprovalModel
-    ],
+    entities: entitiesList,
     migrations: [],
     subscribers: [],
   });
 }
-
-const globalRef = global as unknown as { AppDataSource: DataSource | undefined };
-
-export let AppDataSource: DataSource = globalRef.AppDataSource || createDataSource();
 
 export function applyPatches(ds: DataSource) {
   if ((ds as any).__safeGetRepositoryPatched) return;
@@ -221,13 +138,43 @@ export function applyPatches(ds: DataSource) {
   (ds as any).__safeGetRepositoryPatched = true;
 }
 
+const globalRef = global as unknown as { AppDataSource: DataSource | undefined };
+
+if (globalRef.AppDataSource) {
+  const entityNames = (globalRef.AppDataSource.options.entities as any[])?.map(
+    e => (typeof e === 'function' ? e.name : (e as any)?.name)
+  ) || [];
+  const requiredEntities = [
+    'RolePermissionModel',
+    'DepartmentModel',
+    'InvoiceModel',
+    'OpportunityModel',
+    'MilestoneModel',
+    'ClientBriefModel',
+    'MomModel',
+    'SiteReportModel',
+    'MaterialApprovalModel'
+  ];
+  const missing = requiredEntities.some(name => !entityNames.includes(name));
+  if (missing) {
+    console.log('[DataSource] Updating entities list on cached AppDataSource to include new models...');
+    try {
+      if (globalRef.AppDataSource.isInitialized) {
+        globalRef.AppDataSource.destroy();
+      }
+    } catch {}
+    globalRef.AppDataSource = createDataSource();
+  }
+}
+
+export let AppDataSource: DataSource = globalRef.AppDataSource || createDataSource();
 applyPatches(AppDataSource);
 
 if (process.env.NODE_ENV !== "production") {
   globalRef.AppDataSource = AppDataSource;
 }
 
-export async function getDataSource() {
+export async function getDataSource(): Promise<DataSource> {
   if (AppDataSource.isInitialized) {
     const hasRolePermission = AppDataSource.entityMetadatas.some(
       m => m.name === 'RolePermissionModel' || m.tableName === 'role_permissions'
@@ -241,18 +188,24 @@ export async function getDataSource() {
     const hasOpportunity = AppDataSource.entityMetadatas.some(
       m => m.name === 'OpportunityModel' || m.tableName === 'opportunities'
     );
-    if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity) {
-      console.log('[DataSource] Re-creating AppDataSource to load new entities (OpportunityModel / InvoiceModel / DepartmentModel / RolePermissionModel)...');
+    const hasMilestone = AppDataSource.entityMetadatas.some(
+      m => m.name === 'MilestoneModel' || m.tableName === 'milestones'
+    );
+    const hasMaterialApproval = AppDataSource.entityMetadatas.some(
+      m => m.name === 'MaterialApprovalModel' || m.tableName === 'material_approvals'
+    );
+    if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity || !hasMilestone || !hasMaterialApproval) {
+      console.log('[DataSource] Re-creating AppDataSource to load new entities (OpportunityModel / InvoiceModel / DepartmentModel / RolePermissionModel / MilestoneModel / MaterialApprovalModel)...');
       try {
         await AppDataSource.destroy();
       } catch {}
       AppDataSource = createDataSource();
       globalRef.AppDataSource = AppDataSource;
       await AppDataSource.initialize();
+      applyPatches(AppDataSource);
     }
   }
 
-export async function getDataSource(): Promise<DataSource> {
   if (!AppDataSource.isInitialized) {
     await AppDataSource.initialize();
     applyPatches(AppDataSource);
