@@ -116,37 +116,101 @@ export let AppDataSource = globalRef.AppDataSource || createDataSource();
 if (!(AppDataSource as any).__safeGetRepositoryPatched) {
   const origFindMetadata = (AppDataSource as any).findMetadata?.bind(AppDataSource);
   (AppDataSource as any).findMetadata = function (target: any) {
+import {
+  ClientBriefModel,
+  MomModel,
+  SiteReportModel,
+  MaterialApprovalModel
+} from "../../modules/document/models";
+
+export function createDataSource(): DataSource {
+  return new DataSource({
+    type: "postgres",
+    ...(envConfig.database.url
+      ? { url: envConfig.database.url }
+      : {
+          host: envConfig.database.host,
+          port: envConfig.database.port,
+          username: envConfig.database.username,
+          password: envConfig.database.password,
+          database: envConfig.database.database,
+        }),
+    ssl: envConfig.database.ssl,
+    synchronize: true,
+    logging: true,
+    entities: [
+      TestModel, 
+      UserModel, 
+      CompanyModel, 
+      EmployeeModel, 
+      BranchModel,
+      ClientModel,
+      ProjectCategoryModel,
+      CategoryTaglineModel,
+      CategoryTemplateFieldModel,
+      LeadModel,
+      LeadRequirementValueModel,
+      DeliverableTemplateModel,
+      LeadDeliverableModel,
+      ProjectModel,
+      DisciplineModel,
+      ProjectDisciplineModel,
+      DrawingTypeModel,
+      DrawingModel,
+      DrawingRevisionModel,
+      DrawingFileModel,
+      FolderModel,
+      ProjectFileModel,
+      ClientBriefModel,
+      MomModel,
+      SiteReportModel,
+      MaterialApprovalModel
+    ],
+    migrations: [],
+    subscribers: [],
+  });
+}
+
+const globalRef = global as unknown as { AppDataSource: DataSource | undefined };
+
+export let AppDataSource: DataSource = globalRef.AppDataSource || createDataSource();
+
+export function applyPatches(ds: DataSource) {
+  if ((ds as any).__safeGetRepositoryPatched) return;
+
+  const origFindMetadata = (ds as any).findMetadata?.bind(ds);
+  (ds as any).findMetadata = function (target: any) {
     const found = origFindMetadata ? origFindMetadata(target) : undefined;
     if (found) return found;
     const targetName = typeof target === 'function' ? target.name : String(target);
-    return AppDataSource.entityMetadatas.find(
+    return ds.entityMetadatas.find(
       m => m.name === targetName || m.targetName === targetName || m.tableName === targetName || (typeof m.target === 'function' && m.target.name === targetName)
     );
   };
 
-  const origHasMetadata = AppDataSource.hasMetadata.bind(AppDataSource);
-  (AppDataSource as any).hasMetadata = function (target: any) {
+  const origHasMetadata = ds.hasMetadata.bind(ds);
+  (ds as any).hasMetadata = function (target: any) {
     if (origHasMetadata(target)) return true;
-    return !!(AppDataSource as any).findMetadata(target);
+    return !!(ds as any).findMetadata(target);
   };
 
-  const origGetMetadata = AppDataSource.getMetadata.bind(AppDataSource);
-  (AppDataSource as any).getMetadata = function (target: any) {
+  const origGetMetadata = ds.getMetadata.bind(ds);
+  (ds as any).getMetadata = function (target: any) {
     try {
       return origGetMetadata(target);
     } catch {
-      const meta = (AppDataSource as any).findMetadata(target);
+      const meta = (ds as any).findMetadata(target);
       if (meta) return meta;
       throw new Error(`No metadata for "${typeof target === 'function' ? target.name : target}" was found.`);
     }
   };
 
-  const origGetRepository = AppDataSource.getRepository.bind(AppDataSource);
-  (AppDataSource as any).getRepository = function <Entity>(target: any) {
+  const origGetRepository = ds.getRepository.bind(ds);
+  (ds as any).getRepository = function <Entity>(target: any) {
     try {
       return origGetRepository(target);
     } catch (err: any) {
-      const meta = (AppDataSource as any).findMetadata(target);
+      const meta = (ds as any).findMetadata(target);
       if (meta) {
         return origGetRepository(meta.target as any);
       }
@@ -154,8 +218,10 @@ if (!(AppDataSource as any).__safeGetRepositoryPatched) {
     }
   };
 
-  (AppDataSource as any).__safeGetRepositoryPatched = true;
+  (ds as any).__safeGetRepositoryPatched = true;
 }
+
+applyPatches(AppDataSource);
 
 if (process.env.NODE_ENV !== "production") {
   globalRef.AppDataSource = AppDataSource;
@@ -186,9 +252,19 @@ export async function getDataSource() {
     }
   }
 
+export async function getDataSource(): Promise<DataSource> {
   if (!AppDataSource.isInitialized) {
     await AppDataSource.initialize();
-    
+    applyPatches(AppDataSource);
+    globalRef.AppDataSource = AppDataSource;
+
+    // Ensure all entity metadata targetNames are set to unique tableName to prevent minification-induced cyclic dependency ("Cyclic dependency: 'c'")
+    AppDataSource.entityMetadatas.forEach(m => {
+      if (m.tableName) {
+        (m as any).targetName = m.tableName;
+      }
+    });
+
     // Seed default superadmin user if database is empty
     try {
       const userRepo = AppDataSource.getRepository(UserModel);
@@ -273,5 +349,32 @@ export async function getDataSource() {
       console.error('[Seed] Error seeding default opportunities:', err);
     }
   }
+
+  // Dynamically attach any newly added models without breaking active connections
+  if (
+    AppDataSource.isInitialized &&
+    !AppDataSource.entityMetadatas.some(m => m.name === 'MaterialApprovalModel' || m.tableName === 'material_approvals')
+  ) {
+    try {
+      const { getMetadataArgsStorage } = require('typeorm');
+      const { EntityMetadataBuilder } = require('typeorm/metadata-builder/EntityMetadataBuilder');
+      const builder = new EntityMetadataBuilder(AppDataSource, getMetadataArgsStorage());
+      const built = builder.build([MaterialApprovalModel]);
+      for (const meta of built) {
+        if (!AppDataSource.entityMetadatas.some(m => m.name === meta.name || m.tableName === meta.tableName)) {
+          meta.connection = AppDataSource;
+          AppDataSource.entityMetadatas.push(meta);
+          if ((AppDataSource as any).entityMetadatasMap) {
+            (AppDataSource as any).entityMetadatasMap.set(meta.target, meta);
+            (AppDataSource as any).entityMetadatasMap.set(meta.name, meta);
+            (AppDataSource as any).entityMetadatasMap.set(meta.tableName, meta);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[DataSource] Failed merging fresh entity metadata:', err);
+    }
+  }
+
   return AppDataSource;
 }

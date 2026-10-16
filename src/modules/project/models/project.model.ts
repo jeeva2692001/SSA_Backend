@@ -71,6 +71,9 @@ export class ProjectModel {
   @Column({ type: 'boolean', default: false })
   enableReferencesFolder!: boolean;
 
+  @Column({ type: 'boolean', default: false })
+  allowClientDownload!: boolean;
+
   @CreateDateColumn()
   createdAt!: Date;
 

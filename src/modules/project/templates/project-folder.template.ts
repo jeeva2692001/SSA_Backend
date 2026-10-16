@@ -332,4 +332,32 @@ export const STANDARD_PROJECT_FOLDER_TEMPLATE: FolderTemplateNode[] = [
       { name: 'WARRANTIES', folderType: 'CATEGORY', sortOrder: 18 },
     ],
   },
+
+  // 18. PROJECT DOCUMENTATION
+  {
+    name: '18. PROJECT DOCUMENTATION',
+    folderType: 'TOP_LEVEL',
+    sortOrder: 18,
+    children: [
+      { name: '1. Project Charter & Scope Documents', folderType: 'CATEGORY', sortOrder: 1 },
+      { name: '2. Design & Technical Specifications', folderType: 'CATEGORY', sortOrder: 2 },
+      { name: '3. Statutory & Consultant Documentation', folderType: 'CATEGORY', sortOrder: 3 },
+      { name: '4. Site Progress & Periodic Reports', folderType: 'CATEGORY', sortOrder: 4 },
+      { name: '5. General Project Documents', folderType: 'CATEGORY', sortOrder: 5 },
+    ],
+  },
+
+  // 19. COMPLETED & EXECUTION PHOTOS
+  {
+    name: '19. COMPLETED & EXECUTION PHOTOS',
+    folderType: 'TOP_LEVEL',
+    sortOrder: 19,
+    children: [
+      { name: '1. Completed Project Photos', folderType: 'CATEGORY', sortOrder: 1 },
+      { name: '2. Site Execution & Progress Photos', folderType: 'CATEGORY', sortOrder: 2 },
+      { name: '3. Before & After Execution Photos', folderType: 'CATEGORY', sortOrder: 3 },
+      { name: '4. Handover & Staged Photos', folderType: 'CATEGORY', sortOrder: 4 },
+      { name: '5. Defect Rectification & Snagging Photos', folderType: 'CATEGORY', sortOrder: 5 },
+    ],
+  },
 ];
