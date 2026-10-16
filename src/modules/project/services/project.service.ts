@@ -228,8 +228,14 @@ export class ProjectService {
       floors: JSON.stringify(configuredFloors),
       startDate: input.startDate || new Date().toISOString().split('T')[0],
       completionDate: input.completionDate || '',
+      location: (input as any).location,
+      siteArea: (input as any).siteArea,
+      builtUpArea: (input as any).builtUpArea,
+      budget: (input as any).budget ? Number((input as any).budget) : 0,
+      timeline: (input as any).timeline,
+      progress: (input as any).progress ? Number((input as any).progress) : 0,
       teamMembers: teamMembersProcessed.length > 0 ? JSON.stringify(teamMembersProcessed) : undefined,
-      status: 'Active',
+      status: (input as any).status || 'Active',
       enableReferencesFolder: Boolean(input.enableReferencesFolder),
       allowClientDownload: Boolean(input.allowClientDownload),
     });
@@ -665,7 +671,7 @@ export class ProjectService {
     return true;
   }
 
-  async updateProject(idOrCode: string, updates: Partial<ProjectModel>, companyId?: string): Promise<any> {
+  async updateProject(idOrCode: string, updates: any, companyId?: string): Promise<any> {
     let project = await this.projectRepo.findProjectById(idOrCode, companyId);
     if (!project) {
       project = await this.projectRepo.findProjectByCode(idOrCode, companyId);
@@ -673,6 +679,12 @@ export class ProjectService {
     if (!project) {
       throw new Error(`Project "${idOrCode}" not found.`);
     }
+
+    const payload: Partial<ProjectModel> = { ...updates };
+    if (updates.client && !updates.clientName) payload.clientName = updates.client;
+    if (updates.budget !== undefined) payload.budget = Number(updates.budget);
+    if (updates.progress !== undefined) payload.progress = Number(updates.progress);
+    if (updates.floors && Array.isArray(updates.floors)) payload.floors = JSON.stringify(updates.floors);
 
     if (updates.enableReferencesFolder === true) {
       await this.ensureReferencesFolder(project.id, 'System');
@@ -697,7 +709,7 @@ export class ProjectService {
       await this.projectRepo.deleteProjectDiscipline(project.id, 'REF');
     }
 
-    const updated = await this.projectRepo.updateProject(project.id, updates);
+    const updated = await this.projectRepo.updateProject(project.id, payload);
     return updated;
   }
 
@@ -780,6 +792,12 @@ export class ProjectService {
       const fileUrl = files[0]?.storagePath || '';
       result.push({
         ...d,
+        tag: d.tag || d.tags || d.tagLine || '',
+        tagLine: d.tagLine || d.tag || d.tags || '',
+        tags: d.tags || d.tag || d.tagLine || '',
+        areaOfUsage: d.areaOfUsage || '',
+        drawingType: d.drawingTypeCode || d.drawingType?.code || d.drawingType?.title || '',
+        drawingTypeCode: d.drawingTypeCode || d.drawingType?.code || '',
         revisionsCount: revisions.length,
         latestRevision: latestRev,
         latestFiles: files,
@@ -809,28 +827,54 @@ export class ProjectService {
 
     const drawingCode = input.drawingCode || input.drawingNumber || `${project.projectCode}-${discCode}-${level}-${String(seq).padStart(3, '0')}`;
 
+    const tagVal = input.tag || input.tagLine || input.tags || null;
+    if (tagVal && typeof tagVal === 'string' && tagVal.trim()) {
+      const tagList = tagVal.split(',').map((t: string) => t.trim()).filter(Boolean);
+      if (tagList.length < 4) {
+        throw new Error(`A minimum of 4 tags must be added for each drawing (currently ${tagList.length} provided).`);
+      }
+    }
+    const areaOfUsageVal = input.areaOfUsage || null;
+    const drawingTypeCodeVal = input.drawingTypeCode || input.drawingType || null;
+    const drawingTypeIdVal = input.drawingTypeId || null;
+
     let drawing = await this.projectRepo.findDrawingByCode(drawingCode);
     if (!drawing) {
       drawing = await this.projectRepo.createDrawing({
         projectId: project.id,
         disciplineCode: discCode,
-        drawingTypeId: input.drawingTypeId || null,
+        drawingTypeId: drawingTypeIdVal,
+        drawingTypeCode: drawingTypeCodeVal,
+        areaOfUsage: areaOfUsageVal,
         drawingCode,
         drawingTitle: input.drawingTitle || input.title || 'Drawing Deliverable',
         level,
         sequenceNum: seq,
         status: input.status || 'Draft',
         currentRevision: input.revisionNumber || 'R00',
-        tagLine: input.tagLine || input.tags || null,
-        tags: input.tagLine || input.tags || null,
+        tagLine: tagVal,
+        tags: tagVal,
+        tag: tagVal,
+        preparedBy: input.preparedBy || null,
+        checkedBy: input.checkedBy || null,
+        approvedBy: input.approvedBy || null,
+        isTemporary: Boolean(input.isTemporary ?? false),
       });
     } else {
       drawing = await this.projectRepo.updateDrawing(drawing.id, {
         drawingTitle: input.drawingTitle || drawing.drawingTitle,
         status: input.status || drawing.status,
         currentRevision: input.revisionNumber || drawing.currentRevision,
-        tagLine: input.tagLine || drawing.tagLine,
-        tags: input.tags || drawing.tags,
+        tagLine: tagVal || drawing.tagLine,
+        tags: tagVal || drawing.tags,
+        tag: tagVal || drawing.tag,
+        preparedBy: input.preparedBy !== undefined ? input.preparedBy : drawing.preparedBy,
+        checkedBy: input.checkedBy !== undefined ? input.checkedBy : drawing.checkedBy,
+        approvedBy: input.approvedBy !== undefined ? input.approvedBy : drawing.approvedBy,
+        areaOfUsage: areaOfUsageVal !== null ? areaOfUsageVal : drawing.areaOfUsage,
+        drawingTypeCode: drawingTypeCodeVal || drawing.drawingTypeCode,
+        drawingTypeId: drawingTypeIdVal || drawing.drawingTypeId,
+        isTemporary: input.isTemporary !== undefined ? Boolean(input.isTemporary) : drawing.isTemporary,
       });
     }
 
@@ -864,6 +908,12 @@ export class ProjectService {
 
     return {
       ...drawing,
+      tag: drawing.tag || drawing.tags || drawing.tagLine || '',
+      tagLine: drawing.tagLine || drawing.tag || drawing.tags || '',
+      tags: drawing.tags || drawing.tag || drawing.tagLine || '',
+      areaOfUsage: drawing.areaOfUsage || input.areaOfUsage || '',
+      drawingType: drawing.drawingTypeCode || input.drawingType || '',
+      drawingTypeCode: drawing.drawingTypeCode || input.drawingType || '',
       revisionsCount: 1,
       latestRevision: revision,
       latestFiles: savedFile ? [savedFile] : [],
@@ -892,6 +942,13 @@ export class ProjectService {
 
     return {
       ...drawing,
+      tag: drawing.tag || drawing.tags || drawing.tagLine || '',
+      tagLine: drawing.tagLine || drawing.tag || drawing.tags || '',
+      tags: drawing.tags || drawing.tag || drawing.tagLine || '',
+      areaOfUsage: drawing.areaOfUsage || '',
+      drawingType: drawing.drawingTypeCode || (drawing as any).drawingType?.code || (drawing as any).drawingType?.title || '',
+      drawingTypeCode: drawing.drawingTypeCode || (drawing as any).drawingType?.code || '',
+      drawingNumber: drawing.drawingCode,
       projectCode: project?.projectCode,
       projectName: project?.projectName,
       revisions: populatedRevisions
@@ -1117,18 +1174,48 @@ export class ProjectService {
       throw new Error(`Drawing with ID or Code "${idOrCode}" not found.`);
     }
 
+    const newTagValue = updates.tagLine !== undefined ? updates.tagLine : updates.tags !== undefined ? updates.tags : (updates as any).tag;
+    if (newTagValue !== undefined && typeof newTagValue === 'string' && newTagValue.trim()) {
+      const tagList = newTagValue.split(',').map((t: string) => t.trim()).filter(Boolean);
+      if (tagList.length < 4) {
+        throw new Error(`A minimum of 4 tags must be added for each drawing (currently ${tagList.length} provided).`);
+      }
+    }
+
     const payload: Partial<DrawingModel> = {};
     if (updates.tagLine !== undefined) {
       payload.tagLine = updates.tagLine;
       payload.tags = updates.tagLine;
+      payload.tag = updates.tagLine;
     }
     if (updates.tags !== undefined && updates.tagLine === undefined) {
       payload.tags = updates.tags;
       payload.tagLine = updates.tags;
+      payload.tag = updates.tags;
+    }
+    if ((updates as any).tag !== undefined && updates.tagLine === undefined && updates.tags === undefined) {
+      payload.tag = (updates as any).tag;
+      payload.tagLine = (updates as any).tag;
+      payload.tags = (updates as any).tag;
+    }
+    if ((updates as any).areaOfUsage !== undefined) {
+      payload.areaOfUsage = (updates as any).areaOfUsage;
+    }
+    if ((updates as any).drawingType !== undefined) {
+      payload.drawingTypeCode = (updates as any).drawingType;
+    }
+    if ((updates as any).drawingTypeCode !== undefined) {
+      payload.drawingTypeCode = (updates as any).drawingTypeCode;
+    }
+    if ((updates as any).drawingTypeId !== undefined) {
+      payload.drawingTypeId = (updates as any).drawingTypeId;
     }
     if (updates.drawingTitle !== undefined) payload.drawingTitle = updates.drawingTitle;
     if (updates.status !== undefined) payload.status = updates.status;
     if (updates.level !== undefined) payload.level = updates.level;
+    if ((updates as any).isTemporary !== undefined) {
+      payload.isTemporary = Boolean((updates as any).isTemporary);
+    }
 
     const isFinalising = updates.status && updates.status.trim().toLowerCase() === 'finalised';
     if (isFinalising) {
@@ -1527,6 +1614,10 @@ export class ProjectService {
     fileSize?: number;
     tagLine?: string;
     tags?: string;
+    tag?: string;
+    areaOfUsage?: string;
+    drawingType?: string;
+    isTemporary?: boolean;
     uploadedBy?: string;
   }, companyId?: string): Promise<ProjectFileModel> {
     let project = await this.projectRepo.findProjectById(input.projectId, companyId);
@@ -1537,6 +1628,7 @@ export class ProjectService {
       throw new Error('Project not found.');
     }
     const pId = project ? project.id : input.projectId;
+    const tagVal = input.tag ? input.tag.trim() : input.tagLine ? input.tagLine.trim() : input.tags ? input.tags.trim() : undefined;
 
     return await this.projectRepo.createProjectFile({
       projectId: pId,
@@ -1545,8 +1637,12 @@ export class ProjectService {
       filePath: input.filePath,
       fileType: input.fileType || 'application/octet-stream',
       fileSize: input.fileSize || 0,
-      tagLine: input.tagLine ? input.tagLine.trim() : undefined,
-      tags: input.tags ? input.tags.trim() : undefined,
+      tagLine: tagVal,
+      tags: tagVal,
+      tag: tagVal,
+      areaOfUsage: input.areaOfUsage ? input.areaOfUsage.trim() : undefined,
+      drawingType: input.drawingType ? input.drawingType.trim() : undefined,
+      isTemporary: input.isTemporary ?? false,
       uploadedBy: input.uploadedBy || 'User',
     });
   }

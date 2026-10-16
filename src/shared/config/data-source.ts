@@ -4,6 +4,7 @@ import { envConfig } from "./env.config";
 import { TestModel } from "../../modules/test/models/test.model";
 import { UserModel } from "../../modules/auth/models/user.model";
 import { CompanyModel } from "../../modules/company/models/company.model";
+import { DepartmentModel } from "../../modules/company/models/department.model";
 import { EmployeeModel } from "../../modules/employee/models/employee.model";
 import { BranchModel } from "../../modules/branch/models/branch.model";
 import { ProjectCategoryModel } from "../../modules/lead/models/project-category.model";
@@ -23,8 +24,98 @@ import {
   DrawingRevisionModel,
   DrawingFileModel,
   FolderModel,
-  ProjectFileModel
+  ProjectFileModel,
+  MilestoneModel
 } from "../../modules/project";
+import { RolePermissionModel } from "../../modules/rbac/models/role-permission.model";
+import { InvoiceModel } from "../../modules/billing/models/invoice.model";
+import { OpportunityModel } from "../../modules/lead/models/opportunity.model";
+
+
+const globalRef = global as unknown as { AppDataSource: DataSource | undefined };
+
+const entitiesList = [
+  TestModel, 
+  UserModel, 
+  CompanyModel, 
+  DepartmentModel,
+  EmployeeModel, 
+  BranchModel,
+  ClientModel,
+  ProjectCategoryModel,
+  CategoryTaglineModel,
+  CategoryTemplateFieldModel,
+  LeadModel,
+  LeadRequirementValueModel,
+  DeliverableTemplateModel,
+  LeadDeliverableModel,
+  ProjectModel,
+  DisciplineModel,
+  ProjectDisciplineModel,
+  DrawingTypeModel,
+  DrawingModel,
+  DrawingRevisionModel,
+  DrawingFileModel,
+  FolderModel,
+  ProjectFileModel,
+  RolePermissionModel,
+  InvoiceModel,
+  OpportunityModel,
+  MilestoneModel
+];
+
+const createDataSource = () => new DataSource({
+  type: "postgres",
+  ...(envConfig.database.url
+    ? { url: envConfig.database.url }
+    : {
+        host: envConfig.database.host,
+        port: envConfig.database.port,
+        username: envConfig.database.username,
+        password: envConfig.database.password,
+        database: envConfig.database.database,
+      }),
+  ssl: envConfig.database.ssl,
+  synchronize: true,
+  logging: true,
+  entities: entitiesList,
+  migrations: [],
+  subscribers: [],
+});
+
+if (globalRef.AppDataSource) {
+  const hasRolePermission = (globalRef.AppDataSource.options.entities as any[])?.some(
+    e => (typeof e === 'function' && e.name === 'RolePermissionModel') || (e && (e as any).name === 'RolePermissionModel')
+  );
+  const hasDepartment = (globalRef.AppDataSource.options.entities as any[])?.some(
+    e => (typeof e === 'function' && e.name === 'DepartmentModel') || (e && (e as any).name === 'DepartmentModel')
+  );
+  const hasInvoice = (globalRef.AppDataSource.options.entities as any[])?.some(
+    e => (typeof e === 'function' && e.name === 'InvoiceModel') || (e && (e as any).name === 'InvoiceModel')
+  );
+  const hasOpportunity = (globalRef.AppDataSource.options.entities as any[])?.some(
+    e => (typeof e === 'function' && e.name === 'OpportunityModel') || (e && (e as any).name === 'OpportunityModel')
+  );
+  const hasMilestone = (globalRef.AppDataSource.options.entities as any[])?.some(
+    e => (typeof e === 'function' && e.name === 'MilestoneModel') || (e && (e as any).name === 'MilestoneModel')
+  );
+  if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity || !hasMilestone) {
+    console.log('[DataSource] Updating entities list on cached AppDataSource to include new models (OpportunityModel, InvoiceModel, DepartmentModel, MilestoneModel)...');
+    try {
+      if (globalRef.AppDataSource.isInitialized) {
+        globalRef.AppDataSource.destroy();
+      }
+    } catch {}
+    globalRef.AppDataSource = createDataSource();
+  }
+}
+
+export let AppDataSource = globalRef.AppDataSource || createDataSource();
+
+// Safe getMetadata & getRepository wrapper to handle Next.js / Turbopack HMR class identity changes
+if (!(AppDataSource as any).__safeGetRepositoryPatched) {
+  const origFindMetadata = (AppDataSource as any).findMetadata?.bind(AppDataSource);
+  (AppDataSource as any).findMetadata = function (target: any) {
 import {
   ClientBriefModel,
   MomModel,
@@ -136,6 +227,31 @@ if (process.env.NODE_ENV !== "production") {
   globalRef.AppDataSource = AppDataSource;
 }
 
+export async function getDataSource() {
+  if (AppDataSource.isInitialized) {
+    const hasRolePermission = AppDataSource.entityMetadatas.some(
+      m => m.name === 'RolePermissionModel' || m.tableName === 'role_permissions'
+    );
+    const hasDepartment = AppDataSource.entityMetadatas.some(
+      m => m.name === 'DepartmentModel' || m.tableName === 'departments'
+    );
+    const hasInvoice = AppDataSource.entityMetadatas.some(
+      m => m.name === 'InvoiceModel' || m.tableName === 'invoices'
+    );
+    const hasOpportunity = AppDataSource.entityMetadatas.some(
+      m => m.name === 'OpportunityModel' || m.tableName === 'opportunities'
+    );
+    if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity) {
+      console.log('[DataSource] Re-creating AppDataSource to load new entities (OpportunityModel / InvoiceModel / DepartmentModel / RolePermissionModel)...');
+      try {
+        await AppDataSource.destroy();
+      } catch {}
+      AppDataSource = createDataSource();
+      globalRef.AppDataSource = AppDataSource;
+      await AppDataSource.initialize();
+    }
+  }
+
 export async function getDataSource(): Promise<DataSource> {
   if (!AppDataSource.isInitialized) {
     await AppDataSource.initialize();
@@ -195,6 +311,42 @@ export async function getDataSource(): Promise<DataSource> {
       }
     } catch (err) {
       console.error('[Seed] Error seeding default company:', err);
+    }
+
+    // Seed default RBAC permissions matrix
+    try {
+      const { RbacService } = await import('../../modules/rbac/services/rbac.service');
+      const rbacService = new RbacService();
+      await rbacService.ensureSeeded();
+    } catch (err) {
+      console.error('[Seed] Error seeding default RBAC roles and permissions:', err);
+    }
+
+    // Seed default Departments
+    try {
+      const { DepartmentService } = await import('../../modules/company/services/department.service');
+      const departmentService = new DepartmentService();
+      await departmentService.ensureSeeded();
+    } catch (err) {
+      console.error('[Seed] Error seeding default departments:', err);
+    }
+
+    // Seed default Invoices / Billing records
+    try {
+      const { InvoiceService } = await import('../../modules/billing/services/invoice.service');
+      const invoiceService = new InvoiceService();
+      await invoiceService.ensureSeeded();
+    } catch (err) {
+      console.error('[Seed] Error seeding default invoices:', err);
+    }
+
+    // Seed default Opportunities / Deals
+    try {
+      const { OpportunityService } = await import('../../modules/lead/services/opportunity.service');
+      const oppService = new OpportunityService();
+      await oppService.ensureSeeded();
+    } catch (err) {
+      console.error('[Seed] Error seeding default opportunities:', err);
     }
   }
 

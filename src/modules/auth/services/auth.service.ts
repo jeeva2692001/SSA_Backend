@@ -7,16 +7,20 @@ import { CompanyModel } from '../../company/models/company.model';
 import { BranchModel } from '../../branch/models/branch.model';
 import { getDataSource } from '../../../shared/config/data-source';
 
+import { RbacService } from '../../rbac/services/rbac.service';
+
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-key-for-architect-erp';
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '1d';
 
 export class AuthService {
   private userRepository: UserRepository;
   private companyRepository: CompanyRepository;
+  private rbacService: RbacService;
 
   constructor() {
     this.userRepository = new UserRepository();
     this.companyRepository = new CompanyRepository();
+    this.rbacService = new RbacService();
   }
 
   async companyLogin(username: string, password: string): Promise<{ user: any; token: string; mustChangePassword?: boolean; maskedEmail?: string; username?: string; name?: string; role?: string }> {
@@ -91,15 +95,19 @@ export class AuthService {
       { expiresIn: JWT_EXPIRY as any }
     );
 
+    const permissions = await this.rbacService.getUserPermissions('Company');
+
     const companyResponse = {
       id: company.companyId,
       userId: company.companyId,
+      companyId: company.companyId,
       name: company.name,
       email: company.email,
       role: 'Company',
       contactPerson: company.contactPerson,
       status: company.status,
       mustChangePassword: false,
+      permissions,
     };
 
     return { user: companyResponse, token };
@@ -160,6 +168,8 @@ export class AuthService {
         { expiresIn: JWT_EXPIRY as any }
       );
 
+      const permissions = await this.rbacService.getUserPermissions(user.role);
+
       const userResponse = {
         id: `USR-${String(user.id).padStart(3, '0')}`,
         userId: user.userId,
@@ -168,6 +178,7 @@ export class AuthService {
         role: user.role,
         avatar: user.avatar,
         mustChangePassword: false,
+        permissions,
       };
 
       return { user: userResponse, token };
@@ -239,6 +250,8 @@ export class AuthService {
         { expiresIn: JWT_EXPIRY as any }
       );
 
+      const permissions = await this.rbacService.getUserPermissions('Company');
+
       const companyResponse = {
         id: company.companyId,
         userId: company.companyId,
@@ -248,6 +261,7 @@ export class AuthService {
         contactPerson: company.contactPerson,
         status: company.status,
         mustChangePassword: false,
+        permissions,
       };
 
       return { user: companyResponse, token };
@@ -312,6 +326,8 @@ export class AuthService {
         { expiresIn: JWT_EXPIRY as any }
       );
 
+      const permissions = await this.rbacService.getUserPermissions('Branch');
+
       const branchResponse = {
         id: branch.branchId,
         userId: branch.branchId,
@@ -321,6 +337,7 @@ export class AuthService {
         manager: branch.manager,
         companyId: branch.companyId,
         mustChangePassword: false,
+        permissions,
       };
 
       return { user: branchResponse, token };
@@ -686,14 +703,179 @@ export class AuthService {
     return await this.userRepository.findById(id);
   }
 
-  async getCompanyById(id: number): Promise<CompanyModel | null> {
-    return await this.companyRepository.findById(id);
+  async getCompanyById(id: number | string): Promise<CompanyModel | null> {
+    if (!id) return null;
+    if (typeof id === 'string' && isNaN(Number(id))) {
+      return await this.companyRepository.findByCompanyId(id);
+    }
+    const num = Number(id);
+    if (!isNaN(num)) {
+      const byNum = await this.companyRepository.findById(num);
+      if (byNum) return byNum;
+    }
+    return await this.companyRepository.findByCompanyId(String(id));
   }
 
-  async getBranchById(id: number): Promise<BranchModel | null> {
+  async getBranchById(id: number | string): Promise<BranchModel | null> {
+    if (!id) return null;
     const dataSource = await getDataSource();
     const branchRepo = dataSource.getRepository(BranchModel);
-    return await branchRepo.findOne({ where: { id } });
+    if (typeof id === 'string' && isNaN(Number(id))) {
+      return await branchRepo.findOne({ where: [{ branchId: id }, { code: id }] });
+    }
+    const num = Number(id);
+    if (!isNaN(num)) {
+      const byNum = await branchRepo.findOne({ where: { id: num } });
+      if (byNum) return byNum;
+    }
+    return await branchRepo.findOne({ where: { branchId: String(id) } });
+  }
+
+  async updateProfile(currentUser: any, profileData: { name?: string; email?: string; contactPerson?: string; phone?: string; mobileNumber?: string }): Promise<any> {
+    const { name, email, phone, mobileNumber } = profileData;
+
+    if (currentUser.role === 'Company') {
+      const companyId = currentUser.companyId || currentUser.id;
+      let company = await this.companyRepository.findByCompanyId(companyId);
+      if (!company) {
+        company = await this.companyRepository.findById(Number(companyId));
+      }
+      if (!company) {
+        throw new Error('Company account not found.');
+      }
+
+      if (name && name.trim()) {
+        company.contactPerson = name.trim();
+      }
+      if (profileData.contactPerson && profileData.contactPerson.trim()) {
+        company.contactPerson = profileData.contactPerson.trim();
+      }
+      if (email && email.trim()) {
+        const existing = await this.companyRepository.findByEmail(email.trim().toLowerCase());
+        if (existing && existing.companyId !== company.companyId) {
+          throw new Error('Email is already registered by another account.');
+        }
+        company.email = email.trim().toLowerCase();
+      }
+      if (mobileNumber || phone) {
+        company.mobileNumber = (mobileNumber || phone || '').trim();
+        company.phone = company.mobileNumber;
+      }
+
+      const updated = await this.companyRepository.createCompany(company);
+      const permissions = await this.rbacService.getUserPermissions('Company');
+
+      return {
+        id: updated.companyId,
+        userId: updated.companyId,
+        companyId: updated.companyId,
+        name: updated.name,
+        email: updated.email,
+        role: 'Company',
+        contactPerson: updated.contactPerson,
+        status: updated.status,
+        currency: updated.currency || 'INR',
+        website: updated.website || '',
+        phone: updated.phone || updated.mobileNumber || '',
+        mobileNumber: updated.mobileNumber || updated.phone || '',
+        address: updated.address || '',
+        city: updated.city || '',
+        state: updated.state || '',
+        country: updated.country || 'India',
+        legalEntity: updated.legalEntity || 'Private Limited Company',
+        gstNo: updated.gstNo || '',
+        panNo: updated.panNo || '',
+        mustChangePassword: false,
+        permissions,
+      };
+    }
+
+    if (currentUser.role === 'Branch') {
+      const dataSource = await getDataSource();
+      const branchRepo = dataSource.getRepository(BranchModel);
+      const branchId = currentUser.branchId || currentUser.id;
+      let branch = await branchRepo.findOne({ where: [{ branchId }, { code: branchId }] });
+      if (!branch && !isNaN(Number(branchId))) {
+        branch = await branchRepo.findOne({ where: { id: Number(branchId) } });
+      }
+      if (!branch) {
+        throw new Error('Branch account not found.');
+      }
+
+      if (name && name.trim()) {
+        branch.manager = name.trim();
+      }
+      const updated = await branchRepo.save(branch);
+      const permissions = await this.rbacService.getUserPermissions('Branch');
+
+      return {
+        id: updated.branchId,
+        userId: updated.branchId,
+        name: updated.name,
+        role: 'Branch',
+        code: updated.code,
+        manager: updated.manager,
+        status: updated.status,
+        companyId: updated.companyId,
+        mustChangePassword: false,
+        permissions,
+      };
+    }
+
+    // Standard User / Employee / Super Admin
+    let user = await this.userRepository.findById(Number(currentUser.id));
+    if (!user && currentUser.userId) {
+      user = await this.userRepository.findByUserId(currentUser.userId);
+    }
+    if (!user) {
+      throw new Error('User not found.');
+    }
+
+    if (name && name.trim()) {
+      user.name = name.trim();
+    }
+    if (email && email.trim()) {
+      const existing = await this.userRepository.findByEmail(email.trim().toLowerCase());
+      if (existing && existing.id !== user.id) {
+        throw new Error('Email is already registered by another account.');
+      }
+      user.email = email.trim().toLowerCase();
+    }
+
+    const updated = await this.userRepository.createUser(user);
+
+    // Also update Employee record if exists
+    try {
+      const { EmployeeModel } = await import('../../employee/models/employee.model');
+      const dataSource = await getDataSource();
+      const empRepo = dataSource.getRepository(EmployeeModel);
+      const employee = await empRepo.findOne({
+        where: [
+          { employeeId: user.userId },
+          { email: currentUser.email }
+        ]
+      });
+      if (employee) {
+        if (name && name.trim()) employee.name = name.trim();
+        if (email && email.trim()) employee.email = email.trim().toLowerCase();
+        await empRepo.save(employee);
+      }
+    } catch {
+      // Ignore if employee model not available or not linked
+    }
+
+    const permissions = await this.rbacService.getUserPermissions(updated.role);
+
+    return {
+      id: `USR-${String(updated.id).padStart(3, '0')}`,
+      userId: updated.userId,
+      name: updated.name,
+      email: updated.email,
+      role: updated.role,
+      avatar: updated.avatar,
+      mustChangePassword: false,
+      permissions,
+    };
   }
 
   async branchLogin(username: string, password: string): Promise<{ user: any; token: string }> {

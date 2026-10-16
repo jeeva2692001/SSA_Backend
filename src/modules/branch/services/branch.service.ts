@@ -133,10 +133,19 @@ export class BranchService {
     return savedBranch;
   }
 
-  async deleteBranch(branchId: string, companyId: string): Promise<boolean> {
+  async getAllBranches(): Promise<BranchModel[]> {
+    const branches = await this.branchRepository.findAll();
+    branches.forEach(b => delete b.password);
+    return branches;
+  }
+
+  async deleteBranch(branchId: string, companyId?: string): Promise<boolean> {
     const branch = await this.branchRepository.findByBranchId(branchId);
-    if (!branch || branch.companyId !== companyId) {
+    if (!branch) {
       throw new Error('Branch not found.');
+    }
+    if (companyId && branch.companyId !== companyId) {
+      throw new Error('Branch not found for this company.');
     }
     return await this.branchRepository.deleteByBranchId(branchId, companyId);
   }

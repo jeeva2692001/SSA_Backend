@@ -18,6 +18,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   });
 }
 
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string; fileId: string }> }) {
+  const { fileId } = await params;
+  return await authMiddleware(req, async (user: any) => {
+    return await projectController.renameProjectFile(req, fileId, user);
+  });
+}
+
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string; fileId: string }> }) {
   const { fileId } = await params;
   return await authMiddleware(req, async (user: any) => {

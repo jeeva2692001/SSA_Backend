@@ -637,6 +637,30 @@ async function main() {
     await projectService.seedMasterData();
     console.log('[DB-Init] Seeding Disciplines & Drawing Types Master complete.');
 
+    // Seed RBAC Permissions Matrix
+    const { RbacService } = require('../../modules/rbac/services/rbac.service');
+    const rbacService = new RbacService();
+    await rbacService.ensureSeeded();
+    console.log('[DB-Init] Seeding RBAC Permissions Matrix complete.');
+
+    // Seed Departments
+    const { DepartmentService } = require('../../modules/company/services/department.service');
+    const departmentService = new DepartmentService();
+    await departmentService.ensureSeeded();
+    console.log('[DB-Init] Seeding Departments complete.');
+
+    // Seed Invoices & Billing
+    const { InvoiceService } = require('../../modules/billing/services/invoice.service');
+    const invoiceService = new InvoiceService();
+    await invoiceService.ensureSeeded();
+    console.log('[DB-Init] Seeding Invoices complete.');
+
+    // Seed Opportunities (Deals Pipeline)
+    const { OpportunityService } = require('../../modules/lead/services/opportunity.service');
+    const oppService = new OpportunityService();
+    await oppService.ensureSeeded();
+    console.log('[DB-Init] Seeding Opportunities complete.');
+
     console.log('[DB-Init] Database initialization complete.');
     
     process.exit(0);

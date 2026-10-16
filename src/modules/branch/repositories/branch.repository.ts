@@ -69,9 +69,18 @@ export class BranchRepository {
     return `BRN-${String(maxNum + 1).padStart(3, '0')}`;
   }
 
-  async deleteByBranchId(branchId: string, companyId: string): Promise<boolean> {
+  async findAll(): Promise<BranchModel[]> {
     const repo = await this.getRepository();
-    const result = await repo.delete({ branchId, companyId });
+    return await repo.find({ order: { id: 'ASC' } });
+  }
+
+  async deleteByBranchId(branchId: string, companyId?: string): Promise<boolean> {
+    const repo = await this.getRepository();
+    if (companyId) {
+      const result = await repo.delete({ branchId, companyId });
+      return (result.affected ?? 0) > 0;
+    }
+    const result = await repo.delete({ branchId });
     return (result.affected ?? 0) > 0;
   }
 }
