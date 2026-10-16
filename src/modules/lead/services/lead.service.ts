@@ -344,6 +344,13 @@ export class LeadService {
       updates.displayOrder = data.displayOrder;
     }
     if (data.isActive !== undefined) {
+      if (data.isActive === false && existing.isActive !== false) {
+        const catTaglines = await this.leadRepository.findTaglinesByCategoryId(existing.categoryId);
+        const activeCount = catTaglines.filter(t => t.isActive !== false).length;
+        if (activeCount <= 4) {
+          throw new Error('Cannot deactivate tagline. A minimum of four active taglines must be maintained for the project/design.');
+        }
+      }
       updates.isActive = data.isActive;
     }
 
@@ -358,6 +365,14 @@ export class LeadService {
     if (!existing) {
       throw new Error(`Tagline with ID ${id} not found.`);
     }
+
+    // Enforce business rule: A minimum of four taglines should be maintained for the project/design
+    const categoryTaglines = await this.leadRepository.findTaglinesByCategoryId(existing.categoryId);
+    const activeCount = categoryTaglines.filter(t => t.isActive !== false).length;
+    if (activeCount <= 4) {
+      throw new Error('Cannot delete tagline. A minimum of four taglines should be maintained for the project/design.');
+    }
+
     await this.leadRepository.deleteTagline(id);
   }
 

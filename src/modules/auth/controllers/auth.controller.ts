@@ -105,17 +105,34 @@ export class AuthController {
 
   async getProfile(req: NextRequest, currentUser: any): Promise<NextResponse> {
     try {
+      const { RbacService } = await import('../../rbac/services/rbac.service');
+      const rbacService = new RbacService();
+      const permissions = await rbacService.getUserPermissions(currentUser.role);
+
       if (currentUser.role === 'Company') {
         const companyResponse = {
           id: currentUser.companyId,
           userId: currentUser.companyId,
+          companyId: currentUser.companyId,
           name: currentUser.name,
           email: currentUser.email,
           role: 'Company',
           contactPerson: currentUser.contactPerson,
           status: currentUser.status,
+          currency: currentUser.currency || 'INR',
+          website: currentUser.website || '',
+          phone: currentUser.phone || currentUser.mobileNumber || '',
+          mobileNumber: currentUser.mobileNumber || currentUser.phone || '',
+          address: currentUser.address || '',
+          city: currentUser.city || '',
+          state: currentUser.state || '',
+          country: currentUser.country || 'India',
+          legalEntity: currentUser.legalEntity || 'Private Limited Company',
+          gstNo: currentUser.gstNo || '',
+          panNo: currentUser.panNo || '',
           // [FEATURE PAUSED] Re-enable in future: mustChangePassword: !!currentUser.isFirstLogin,
           mustChangePassword: false,
+          permissions,
         };
         return NextResponse.json(companyResponse, { status: 200 });
       }
@@ -132,6 +149,7 @@ export class AuthController {
           companyId: currentUser.companyId,
           // [FEATURE PAUSED] Re-enable in future: mustChangePassword: !!currentUser.isFirstLogin,
           mustChangePassword: false,
+          permissions,
         };
         return NextResponse.json(branchResponse, { status: 200 });
       }
@@ -145,6 +163,7 @@ export class AuthController {
         avatar: currentUser.avatar,
         // [FEATURE PAUSED] Re-enable in future: mustChangePassword: currentUser.role === 'Super Admin' ? false : (currentUser.isFirstLogin ?? false),
         mustChangePassword: false,
+        permissions,
       };
       return NextResponse.json(userResponse, { status: 200 });
     } catch (error: any) {
@@ -152,6 +171,20 @@ export class AuthController {
       return NextResponse.json(
         { message: 'Failed to retrieve profile.' },
         { status: 500 }
+      );
+    }
+  }
+
+  async updateProfile(req: NextRequest, currentUser: any): Promise<NextResponse> {
+    try {
+      const body = await req.json();
+      const updatedUser = await this.authService.updateProfile(currentUser, body);
+      return NextResponse.json(updatedUser, { status: 200 });
+    } catch (error: any) {
+      console.error('Error in AuthController.updateProfile:', error.message);
+      return NextResponse.json(
+        { message: error.message || 'Failed to update profile.' },
+        { status: 400 }
       );
     }
   }

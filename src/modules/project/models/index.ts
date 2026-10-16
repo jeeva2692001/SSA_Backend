@@ -7,4 +7,5 @@ export * from './drawing-revision.model';
 export * from './drawing-file.model';
 export * from './folder.model';
 export * from './project-file.model';
+export * from './milestone.model';
 

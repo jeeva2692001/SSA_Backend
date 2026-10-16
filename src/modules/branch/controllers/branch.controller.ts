@@ -10,7 +10,19 @@ export class BranchController {
 
   async getAll(req: NextRequest, user: any): Promise<NextResponse> {
     try {
-      const companyId = user.companyId || user.userId;
+      const { searchParams } = new URL(req.url);
+      const queryCompanyId = searchParams.get('companyId');
+
+      if (user?.role === 'Super Admin') {
+        if (queryCompanyId) {
+          const branches = await this.branchService.getBranches(queryCompanyId);
+          return NextResponse.json(branches, { status: 200 });
+        }
+        const branches = await this.branchService.getAllBranches();
+        return NextResponse.json(branches, { status: 200 });
+      }
+
+      const companyId = user?.companyId || (user?.role === 'Company' ? user?.userId : user?.companyId);
       if (!companyId) {
         return NextResponse.json({ message: 'Company Identification is missing.' }, { status: 400 });
       }
@@ -28,13 +40,16 @@ export class BranchController {
 
   async register(req: NextRequest, user: any): Promise<NextResponse> {
     try {
-      const companyId = user.companyId || user.userId;
-      if (!companyId) {
+      const body = await req.json();
+      const targetCompanyId = (user?.role === 'Super Admin' && body.companyId)
+        ? body.companyId
+        : (user?.companyId || (user?.role === 'Company' ? user?.userId : 'COM-001'));
+
+      if (!targetCompanyId) {
         return NextResponse.json({ message: 'Company Identification is missing.' }, { status: 400 });
       }
 
-      const body = await req.json();
-      const branch = await this.branchService.addBranch(companyId, body);
+      const branch = await this.branchService.addBranch(targetCompanyId, body);
       return NextResponse.json(branch, { status: 201 });
     } catch (error: any) {
       console.error('Error in BranchController.register:', error.message);
@@ -47,11 +62,6 @@ export class BranchController {
 
   async update(req: NextRequest, user: any): Promise<NextResponse> {
     try {
-      const companyId = user.companyId || user.userId;
-      if (!companyId) {
-        return NextResponse.json({ message: 'Company Identification is missing.' }, { status: 400 });
-      }
-
       const body = await req.json();
       const { branchId, ...updateData } = body;
 
@@ -62,6 +72,7 @@ export class BranchController {
         );
       }
 
+      const companyId = user?.companyId || (user?.role === 'Company' ? user?.userId : user?.companyId) || updateData.companyId;
       const branch = await this.branchService.updateBranch(branchId, companyId, updateData);
       return NextResponse.json(branch, { status: 200 });
     } catch (error: any) {
@@ -75,11 +86,6 @@ export class BranchController {
 
   async delete(req: NextRequest, user: any): Promise<NextResponse> {
     try {
-      const companyId = user.companyId || user.userId;
-      if (!companyId) {
-        return NextResponse.json({ message: 'Company Identification is missing.' }, { status: 400 });
-      }
-
       const { searchParams } = new URL(req.url);
       const branchId = searchParams.get('branchId');
 
@@ -90,7 +96,17 @@ export class BranchController {
         );
       }
 
-      const deleted = await this.branchService.deleteBranch(branchId, companyId);
+      let deleted = false;
+      if (user?.role === 'Super Admin') {
+        deleted = await this.branchService.deleteBranch(branchId);
+      } else {
+        const companyId = user?.companyId || (user?.role === 'Company' ? user?.userId : user?.companyId);
+        if (!companyId) {
+          return NextResponse.json({ message: 'Company Identification is missing.' }, { status: 400 });
+        }
+        deleted = await this.branchService.deleteBranch(branchId, companyId);
+      }
+
       if (!deleted) {
         return NextResponse.json(
           { message: 'Branch not found or already deleted.' },

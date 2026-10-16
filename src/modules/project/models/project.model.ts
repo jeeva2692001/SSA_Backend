@@ -50,8 +50,29 @@ export class ProjectModel {
   @Column({ type: 'varchar', default: 'Active' })
   status!: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  location?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  siteArea?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  builtUpArea?: string;
+
+  @Column({ type: 'double precision', nullable: true, default: 0 })
+  budget?: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  timeline?: string;
+
+  @Column({ type: 'integer', default: 0 })
+  progress?: number;
+
   @Column({ type: 'boolean', default: false })
   enableReferencesFolder!: boolean;
+
+  @Column({ type: 'boolean', default: false })
+  allowClientDownload!: boolean;
 
   @CreateDateColumn()
   createdAt!: Date;

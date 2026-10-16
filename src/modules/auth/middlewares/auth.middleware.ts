@@ -34,8 +34,15 @@ export async function authMiddleware(req: NextRequest, next: (user: any) => Prom
       return NextResponse.json({ message: 'User does not exist.' }, { status: 401 });
     }
 
-    // Attach role to the user object dynamically
+    // Attach role and companyId to the user object dynamically
     (user as any).role = decoded.role;
+    if (decoded.companyId) {
+      (user as any).companyId = decoded.companyId;
+    } else if ((user as any).companyId) {
+      // already has companyId
+    } else if (decoded.role === 'Company') {
+      (user as any).companyId = (user as any).companyId || (user as any).id;
+    }
 
     return await next(user);
   } catch (error: any) {

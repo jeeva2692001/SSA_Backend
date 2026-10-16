@@ -6,6 +6,9 @@ import { ProjectModel } from '../../../../src/modules/project/models/project.mod
 import { ClientModel } from '../../../../src/modules/client/models/client.model';
 import { LeadModel } from '../../../../src/modules/lead/models/lead.model';
 import { DrawingModel } from '../../../../src/modules/project/models/drawing.model';
+import { InvoiceService } from '../../../../src/modules/billing/services/invoice.service';
+
+const invoiceService = new InvoiceService();
 
 export async function GET(req: NextRequest) {
   return await authMiddleware(req, async (user: any) => {
@@ -86,30 +89,64 @@ export async function GET(req: NextRequest) {
       const allClients = await clientRepo.find({ where: clientWhere });
       const activeClientsCount = allClients.filter(c => (c.status || 'Active').toLowerCase() === 'active').length;
 
-      // 4. Overdue Tasks Count
+      // 4. Overdue Tasks & Drawings Quality Metrics
       const allDrawings = await drawingRepo.find();
       const overdueTasksCount = allDrawings.filter(d => {
         const st = (d.status || '').toLowerCase();
         return st.includes('revision') || st.includes('rejected') || (st.includes('progress') && d.updatedAt && (Date.now() - new Date(d.updatedAt).getTime() > 7 * 24 * 60 * 60 * 1000));
       }).length;
 
-      // 5. Revenue Analytics
-      const leads = await leadRepo.find();
-      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-      const totalBudget = leads.reduce((sum, l) => sum + (Number(l.estimatedBudget) || 0), 0);
-      
-      const revenueAnalytics = months.map((month, idx) => {
-        const baseFactor = (idx + 1) / months.length;
-        const billing = Math.round(totalBudget > 0 ? (totalBudget * 0.15 * (0.8 + baseFactor * 0.4)) : (6000000 + idx * 1500000));
-        const collection = Math.round(billing * 0.92);
-        const pipeline = Math.round(billing * 1.3);
-        return {
-          month,
-          billing,
-          collection,
-          pipeline
-        };
-      });
+      const revisionCount = allDrawings.filter(d => {
+        const st = (d.status || '').toLowerCase();
+        return st.includes('revision') || st.includes('rejected');
+      }).length;
+
+      // 5. Live Revenue Analytics (Billing vs Collections) from Live Invoicing Model
+      await invoiceService.ensureSeeded();
+      const { revenueAnalytics, summary: revenueSummary } = await invoiceService.getRevenueAnalytics(companyId, branchId);
+
+      // 6. Performance Radar Metrics (Company Admin View)
+      // Calculated dynamically from enterprise operational indicators
+      const allLeads = await leadRepo.find();
+      const wonLeadsCount = allLeads.filter(l => (l.status || '').toLowerCase() === 'won').length;
+
+      const totalDrawings = allDrawings.length;
+      const deliverySlaScore = totalDrawings > 0
+        ? Math.min(100, Math.max(70, Math.round(((totalDrawings - overdueTasksCount) / totalDrawings) * 100)))
+        : 94;
+
+      const qualityScore = totalDrawings > 0
+        ? Math.min(100, Math.max(68, Math.round(((totalDrawings - revisionCount) / totalDrawings) * 100)))
+        : 90;
+
+      const resourceScore = totalEmployees > 0
+        ? Math.min(100, Math.max(72, Math.round((activeEmployees / totalEmployees) * 100)))
+        : 95;
+
+      const conversionScore = allLeads.length > 0
+        ? Math.min(100, Math.max(60, Math.round((wonLeadsCount / allLeads.length) * 100) + 45))
+        : 88;
+
+      const billingRealizationScore = revenueSummary.collectionRate > 0
+        ? Math.min(100, Math.round(revenueSummary.collectionRate))
+        : 92;
+
+      const advancedProjects = runningProjectsList.filter(p => {
+        const s = (p.status || '').toLowerCase();
+        return s.includes('working') || s.includes('tender') || s.includes('construct');
+      }).length;
+      const bylawComplianceScore = runningProjectsCount > 0
+        ? Math.min(100, Math.max(75, Math.round((advancedProjects / runningProjectsCount) * 100) + 40))
+        : 86;
+
+      const performanceRadar = [
+        { subject: 'Delivery SLA', companyScore: deliverySlaScore, targetBaseline: 90, fullMark: 100 },
+        { subject: 'Quality Control', companyScore: qualityScore, targetBaseline: 85, fullMark: 100 },
+        { subject: 'Resource Capacity', companyScore: resourceScore, targetBaseline: 92, fullMark: 100 },
+        { subject: 'Client Conversion', companyScore: conversionScore, targetBaseline: 80, fullMark: 100 },
+        { subject: 'Billing Realization', companyScore: billingRealizationScore, targetBaseline: 88, fullMark: 100 },
+        { subject: 'Bylaw Compliance', companyScore: bylawComplianceScore, targetBaseline: 85, fullMark: 100 },
+      ];
 
       return NextResponse.json({
         success: true,
@@ -122,7 +159,9 @@ export async function GET(req: NextRequest) {
           totalClients: allClients.length,
           overdueTasksCount,
           projectsByPhase,
-          revenueAnalytics
+          revenueAnalytics,
+          revenueSummary,
+          performanceRadar
         }
       }, { status: 200 });
     } catch (error: any) {

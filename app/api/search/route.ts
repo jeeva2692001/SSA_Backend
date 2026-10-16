@@ -117,8 +117,11 @@ export async function GET(req: NextRequest) {
               d.disciplineCode,
               d.tagLine,
               d.tags,
+              d.tag,
+              d.areaOfUsage,
               d.status,
               d.level,
+              d.drawingTypeCode,
               d.drawingType?.title,
               d.drawingType?.code,
               proj?.projectName,
@@ -158,7 +161,7 @@ export async function GET(req: NextRequest) {
               return false;
             }
             return matchesQuery(
-              [f.fileName, f.tagLine, f.tags, f.approvalStatus, f.uploadedBy, f.fileType],
+              [f.fileName, f.tagLine, f.tags, f.tag, f.areaOfUsage, f.drawingType, f.approvalStatus, f.uploadedBy, f.fileType],
               qLower,
               tokens
             );
