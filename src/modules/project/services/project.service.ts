@@ -18,6 +18,10 @@ import {
   FolderTemplateNode
 } from '../templates/project-folder.template';
 import { emailService } from '../../../shared/services/email.service';
+import { AppDataSource } from '../../../shared/config/data-source';
+import { LeadModel } from '../../lead/models/lead.model';
+import { ClientModel } from '../../client/models/client.model';
+import { EmployeeModel } from '../../employee/models/employee.model';
 
 
 export class ProjectService {
@@ -512,13 +516,15 @@ export class ProjectService {
 
     const result = [];
     for (const p of projects) {
-      const disciplines = await this.projectRepo.findProjectDisciplines(p.id);
-      const drawings = await this.projectRepo.findDrawingsByProjectId(p.id);
+      const enriched = await this.enrichProjectLiveData(p);
+      const disciplines = await this.projectRepo.findProjectDisciplines(enriched.id);
+      const drawings = await this.projectRepo.findDrawingsByProjectId(enriched.id);
+      const team = await this.resolveLiveTeamMembers(enriched);
 
       // Clean & deduplicate disciplines
       const uniqueDisciplines: { code: string; folderCode: string }[] = [];
       const seenCodes = new Set<string>();
-      const isRefEnabled = Boolean(p.enableReferencesFolder);
+      const isRefEnabled = Boolean(enriched.enableReferencesFolder);
       for (const d of disciplines) {
         if (!d.disciplineCode) continue;
         if (d.disciplineCode === 'REF' && !isRefEnabled) continue;
@@ -528,19 +534,244 @@ export class ProjectService {
         }
       }
       if (isRefEnabled && !seenCodes.has('REF')) {
-        uniqueDisciplines.unshift({ code: 'REF', folderCode: `${p.projectCode}-REF` });
+        uniqueDisciplines.unshift({ code: 'REF', folderCode: `${enriched.projectCode}-REF` });
       }
 
       result.push({
-        ...p,
+        ...enriched,
+        teamMembers: team,
         enableReferencesFolder: isRefEnabled,
-        allowClientDownload: Boolean(p.allowClientDownload),
-        floors: this.safeParseFloors(p.floors),
+        allowClientDownload: Boolean(enriched.allowClientDownload),
+        floors: this.safeParseFloors(enriched.floors),
         disciplines: uniqueDisciplines,
         drawingsCount: drawings.length
       });
     }
     return result;
+  }
+
+  async enrichProjectLiveData(project: ProjectModel): Promise<ProjectModel> {
+    const hasMissingFields = !project.location || !project.budget || !project.timeline || !project.builtUpArea;
+    if (!hasMissingFields) return project;
+
+    try {
+      const leadRepo = AppDataSource.getRepository(LeadModel);
+      const clientRepo = AppDataSource.getRepository(ClientModel);
+
+      let matchedLead: LeadModel | null = null;
+      if (project.clientId) {
+        matchedLead = await leadRepo.findOne({ where: { clientId: project.clientId } });
+      }
+      if (!matchedLead && project.projectName) {
+        matchedLead = await leadRepo.findOne({ where: [{ leadTitle: project.projectName }, { projectName: project.projectName }] });
+      }
+      if (!matchedLead && project.clientName) {
+        matchedLead = await leadRepo.findOne({ where: { clientName: project.clientName } });
+      }
+
+      let matchedClient: ClientModel | null = null;
+      if (project.clientId) {
+        matchedClient = await clientRepo.findOne({ where: { id: project.clientId } });
+      }
+      if (!matchedClient && project.clientName) {
+        matchedClient = await clientRepo.findOne({ where: [{ clientName: project.clientName }, { company: project.clientName }] });
+      }
+
+      let changed = false;
+      if (!project.location) {
+        const leadLoc = matchedLead ? [matchedLead.siteAddress, matchedLead.city, matchedLead.state].filter(Boolean).join(', ') : '';
+        const clientLoc = matchedClient ? [matchedClient.address, matchedClient.city, matchedClient.state].filter(Boolean).join(', ') : '';
+        if (leadLoc || clientLoc) {
+          project.location = leadLoc || clientLoc;
+          changed = true;
+        }
+      }
+      if (!project.siteArea && matchedLead?.siteArea) {
+        project.siteArea = `${matchedLead.siteArea} ${matchedLead.unit || 'Sq.ft'}`;
+        changed = true;
+      }
+      if (!project.builtUpArea && matchedLead?.expectedBuiltUpArea) {
+        project.builtUpArea = matchedLead.expectedBuiltUpArea;
+        changed = true;
+      }
+      if ((!project.budget || Number(project.budget) === 0) && matchedLead) {
+        const leadBudget = Number(matchedLead.estimatedBudget) || Number(String(matchedLead.budgetRange || '').replace(/[^0-9.]/g, '')) || 0;
+        if (leadBudget > 0) {
+          project.budget = leadBudget;
+          changed = true;
+        }
+      }
+      if (!project.timeline && matchedLead) {
+        const leadTime = matchedLead.expectedStartDate
+          ? `${matchedLead.expectedStartDate} to ${matchedLead.expectedCompletionDate || 'TBD'}`
+          : matchedLead.timelineExpectation || '';
+        if (leadTime) {
+          project.timeline = leadTime;
+          changed = true;
+        }
+      }
+
+      if (changed) {
+        const repo = (this.projectRepo as any).projectRepo();
+        await repo.update(project.id, {
+          location: project.location,
+          siteArea: project.siteArea,
+          builtUpArea: project.builtUpArea,
+          budget: project.budget,
+          timeline: project.timeline
+        });
+      }
+    } catch (err) {
+      console.warn('[ProjectService] Note on enriching project live data:', err);
+    }
+
+    return project;
+  }
+
+  async resolveLiveTeamMembers(project: ProjectModel): Promise<any[]> {
+    let parsedTeamMembers: any[] = [];
+    if (project.teamMembers) {
+      try {
+        parsedTeamMembers = typeof project.teamMembers === 'string' ? JSON.parse(project.teamMembers) : project.teamMembers;
+      } catch {}
+    }
+
+    const hasDummyTeam = !Array.isArray(parsedTeamMembers) || parsedTeamMembers.length === 0 || parsedTeamMembers.some(m =>
+      m.name && (m.name.includes('Rajesh Kumar') || m.name.includes('Priya Sharma') || m.name.includes('Vikramaditya Rao'))
+    );
+
+    try {
+      const empRepo = AppDataSource.getRepository(EmployeeModel);
+      const clientRepo = AppDataSource.getRepository(ClientModel);
+      const leadRepo = AppDataSource.getRepository(LeadModel);
+
+      const activeEmployees = await empRepo.find({ where: { status: 'Active' } });
+      const client = project.clientId
+        ? await clientRepo.findOne({ where: { id: project.clientId } })
+        : await clientRepo.findOne({ where: { clientName: project.clientName } });
+
+      let matchedLead: LeadModel | null = null;
+      if (project.clientId) {
+        matchedLead = await leadRepo.findOne({ where: { clientId: project.clientId } });
+      }
+      if (!matchedLead && project.projectName) {
+        matchedLead = await leadRepo.findOne({ where: [{ leadTitle: project.projectName }, { projectName: project.projectName }] });
+      }
+
+      if (hasDummyTeam) {
+        const prefix = (project.projectPrefix || 'PRJ').toLowerCase();
+
+        // 1. Live Designer
+        const designerEmp = activeEmployees.find(e => (e.designation || '').toLowerCase().includes('design') || (e.department || '').toLowerCase().includes('design')) || activeEmployees[0];
+        // 2. Live Checker
+        const assignedLeadEmp = matchedLead?.assignedEmployee ? activeEmployees.find(e => e.name.toLowerCase() === matchedLead.assignedEmployee?.toLowerCase()) : null;
+        const checkerEmp = assignedLeadEmp || activeEmployees.find(e => (e.designation || '').toLowerCase().includes('architect') && e.id !== designerEmp?.id) || activeEmployees[1] || designerEmp;
+        // 3. Live Project Manager
+        const pmEmp = activeEmployees.find(e => ((e.designation || '').toLowerCase().includes('project') || (e.designation || '').toLowerCase().includes('principal') || (e.designation || '').toLowerCase().includes('manager')) && e.id !== designerEmp?.id && e.id !== checkerEmp?.id) || activeEmployees[2] || designerEmp;
+        // 4. Live Client
+        const clientName = client?.contactPerson || client?.clientName || project.clientName || 'Authorized Client Representative';
+        const clientEmail = client?.email || `client_${prefix}@ssa-erp.com`;
+        const clientPhone = client?.mobile || (client as any)?.phone || '+91 98765 43210';
+        // 5. Live Site Engineer
+        const siteEmp = activeEmployees.find(e => ((e.department || '').toLowerCase().includes('structural') || (e.designation || '').toLowerCase().includes('consultant')) && e.id !== designerEmp?.id && e.id !== checkerEmp?.id && e.id !== pmEmp?.id) || activeEmployees[3] || pmEmp;
+
+        parsedTeamMembers = [
+          {
+            role: 'Designer',
+            name: designerEmp ? designerEmp.name : 'Architectural Designer',
+            designation: designerEmp ? designerEmp.designation : 'Lead Architectural Designer',
+            department: designerEmp ? designerEmp.department : 'Design & Drafting',
+            email: designerEmp ? designerEmp.email : `designer_${prefix}@ssa-erp.com`,
+            phone: designerEmp ? designerEmp.phone : '+91 98765 43210',
+            employeeId: designerEmp ? designerEmp.employeeId : null,
+            assignedTasks: 'Floor Plans, Elevations, 3D Models & Drawing Submissions'
+          },
+          {
+            role: 'Checker',
+            name: checkerEmp ? checkerEmp.name : 'Structural Checker',
+            designation: checkerEmp ? checkerEmp.designation : 'Lead Structural QA / Checker',
+            department: checkerEmp ? checkerEmp.department : 'Architecture & QA',
+            email: checkerEmp ? checkerEmp.email : `checker_${prefix}@ssa-erp.com`,
+            phone: checkerEmp ? checkerEmp.phone : '+91 98765 43211',
+            employeeId: checkerEmp ? checkerEmp.employeeId : null,
+            assignedTasks: 'L1 Design Verification, Code Compliance & Cross-discipline Checks'
+          },
+          {
+            role: 'Project Manager',
+            name: pmEmp ? pmEmp.name : 'Project Manager',
+            designation: pmEmp ? pmEmp.designation : 'Principal Project Manager',
+            department: pmEmp ? pmEmp.department : 'Project Management',
+            email: pmEmp ? pmEmp.email : `pm_${prefix}@ssa-erp.com`,
+            phone: pmEmp ? pmEmp.phone : '+91 98765 43212',
+            employeeId: pmEmp ? pmEmp.employeeId : null,
+            assignedTasks: 'Project Scheduling, L2 Reviews, Budgeting & Client Dispatch'
+          },
+          {
+            role: 'Client',
+            name: clientName,
+            designation: client?.company ? `${client.company} Representative` : 'Authorized Client Representative',
+            department: 'Client Management',
+            email: clientEmail,
+            phone: clientPhone,
+            assignedTasks: 'Design Reviews, Milestone Approvals & Site Work Authorization'
+          },
+          {
+            role: 'Site Engineer',
+            name: siteEmp ? siteEmp.name : 'Site Engineer',
+            designation: siteEmp ? siteEmp.designation : 'Site Operations Lead',
+            department: siteEmp ? siteEmp.department : 'Site Execution & Contractors',
+            email: siteEmp ? siteEmp.email : `site_${prefix}@ssa-erp.com`,
+            phone: siteEmp ? siteEmp.phone : '+91 98765 43213',
+            employeeId: siteEmp ? siteEmp.employeeId : null,
+            assignedTasks: 'Physical Construction, Contractor Coordination & Site Execution (Starts after Client Approval)'
+          }
+        ];
+
+        try {
+          const repo = (this.projectRepo as any).projectRepo();
+          await repo.update(project.id, { teamMembers: JSON.stringify(parsedTeamMembers) });
+        } catch (err) {
+          console.warn('[ProjectService] Failed to persist live team members:', err);
+        }
+      } else {
+        // Enrich existing real team members with full employee & client details
+        parsedTeamMembers = parsedTeamMembers.map((m: any) => {
+          if (m.employeeId) {
+            const emp = activeEmployees.find(e => e.employeeId === m.employeeId);
+            if (emp) {
+              return {
+                ...m,
+                designation: m.designation || emp.designation,
+                department: m.department || emp.department,
+                phone: m.phone || emp.phone,
+                email: m.email || emp.email,
+                assignedTasks: m.assignedTasks || (
+                  m.role === 'Designer' ? 'Floor Plans, Elevations, 3D Models & Drawing Submissions' :
+                  m.role === 'Checker' ? 'L1 Design Verification, Code Compliance & Cross-discipline Checks' :
+                  m.role === 'Project Manager' ? 'Project Scheduling, L2 Reviews, Budgeting & Client Dispatch' :
+                  m.role === 'Client' ? 'Design Reviews, Milestone Approvals & Site Work Authorization' :
+                  'Site Coordination & Execution'
+                )
+              };
+            }
+          }
+          if (m.role === 'Client' && client) {
+            return {
+              ...m,
+              phone: m.phone || client.mobile || (client as any).phone || '',
+              email: m.email || client.email || '',
+              designation: m.designation || (client.company ? `${client.company} Representative` : 'Authorized Client Representative'),
+              department: m.department || 'Client Management'
+            };
+          }
+          return m;
+        });
+      }
+    } catch (err) {
+      console.warn('[ProjectService] Error in resolveLiveTeamMembers:', err);
+    }
+
+    return parsedTeamMembers;
   }
 
   private safeParseFloors(floorsVal: any): string[] {
@@ -564,77 +795,15 @@ export class ProjectService {
     }
     if (!project) return null;
 
-    const disciplines = await this.projectRepo.findProjectDisciplines(project.id);
-    const drawings = await this.projectRepo.findDrawingsByProjectId(project.id);
-
-    let parsedTeamMembers: any[] = [];
-    if (project.teamMembers) {
-      try {
-        parsedTeamMembers = typeof project.teamMembers === 'string' ? JSON.parse(project.teamMembers) : project.teamMembers;
-      } catch {}
-    }
-
-    // If teamMembers is empty, generate standard 4-role assigned team
-    if (!Array.isArray(parsedTeamMembers) || parsedTeamMembers.length === 0) {
-      const prefix = (project.projectPrefix || 'GVR').toLowerCase();
-      parsedTeamMembers = [
-        {
-          role: 'Designer',
-          name: 'Ar. Rajesh Kumar',
-          designation: 'Senior Lead Architect',
-          department: 'Design & Drafting',
-          email: `designer_${prefix}@ssa-erp.com`,
-          phone: '+91 98450 12345',
-          userId: `designer_${prefix}`,
-          assignedTasks: 'Floor Plans, Elevations, 3D Models & Drawing Submissions'
-        },
-        {
-          role: 'Checker',
-          name: 'Er. Priya Sharma',
-          designation: 'Senior QA / Lead Structural Checker',
-          department: 'Architecture & QA',
-          email: `checker_${prefix}@ssa-erp.com`,
-          phone: '+91 98450 23456',
-          userId: `checker_${prefix}`,
-          assignedTasks: 'L1 Design Verification, Code Compliance & Cross-discipline Checks'
-        },
-        {
-          role: 'Project Manager',
-          name: 'Vikramaditya Rao',
-          designation: 'Principal Project Manager',
-          department: 'Project Management',
-          email: `pm_${prefix}@ssa-erp.com`,
-          phone: '+91 98450 34567',
-          userId: `pm_${prefix}`,
-          assignedTasks: 'Project Scheduling, L2 Reviews, Budgeting & Client Dispatch'
-        },
-        {
-          role: 'Client',
-          name: project.clientName || 'GVR Infrastructure Client Rep',
-          designation: 'Authorized Client Representative',
-          department: 'Client Management',
-          email: `client_${prefix}@ssa-erp.com`,
-          phone: '+91 98450 45678',
-          userId: `client_${prefix}`,
-          assignedTasks: 'Design Reviews, Milestone Approvals & Site Work Authorization'
-        },
-        {
-          role: 'Site Engineer',
-          name: 'Karthik Nambiar',
-          designation: 'Chief Site Operations Engineer',
-          department: 'Site Execution & Contractors',
-          email: `site_${prefix}@ssa-erp.com`,
-          phone: '+91 98450 56789',
-          userId: `site_${prefix}`,
-          assignedTasks: 'Physical Construction, Contractor Coordination & Site Execution (Starts after Client Approval)'
-        }
-      ];
-    }
+    const enriched = await this.enrichProjectLiveData(project);
+    const disciplines = await this.projectRepo.findProjectDisciplines(enriched.id);
+    const drawings = await this.projectRepo.findDrawingsByProjectId(enriched.id);
+    const parsedTeamMembers = await this.resolveLiveTeamMembers(enriched);
 
     // Clean & deduplicate disciplines
     const uniqueDisciplines: { code: string; folderCode: string }[] = [];
     const seenCodes = new Set<string>();
-    const isRefEnabled = Boolean(project.enableReferencesFolder);
+    const isRefEnabled = Boolean(enriched.enableReferencesFolder);
     for (const d of disciplines) {
       if (!d.disciplineCode) continue;
       if (d.disciplineCode === 'REF' && !isRefEnabled) continue;
@@ -644,14 +813,14 @@ export class ProjectService {
       }
     }
     if (isRefEnabled && !seenCodes.has('REF')) {
-      uniqueDisciplines.unshift({ code: 'REF', folderCode: `${project.projectCode}-REF` });
+      uniqueDisciplines.unshift({ code: 'REF', folderCode: `${enriched.projectCode}-REF` });
     }
 
     return {
-      ...project,
+      ...enriched,
       enableReferencesFolder: isRefEnabled,
-      allowClientDownload: Boolean(project.allowClientDownload),
-      floors: this.safeParseFloors(project.floors),
+      allowClientDownload: Boolean(enriched.allowClientDownload),
+      floors: this.safeParseFloors(enriched.floors),
       disciplines: uniqueDisciplines,
       drawingsCount: drawings.length,
       teamMembers: parsedTeamMembers
