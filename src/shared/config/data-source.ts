@@ -5,7 +5,12 @@ import { TestModel } from "../../modules/test/models/test.model";
 import { UserModel } from "../../modules/auth/models/user.model";
 import { CompanyModel } from "../../modules/company/models/company.model";
 import { DepartmentModel } from "../../modules/company/models/department.model";
-import { EmployeeModel } from "../../modules/employee/models/employee.model";
+import { 
+  EmployeeModel,
+  AttendanceModel,
+  LeaveRequestModel,
+  PerformanceReviewModel 
+} from "../../modules/employee";
 import { BranchModel } from "../../modules/branch/models/branch.model";
 import { ProjectCategoryModel } from "../../modules/lead/models/project-category.model";
 import { CategoryTaglineModel } from "../../modules/lead/models/category-tagline.model";
@@ -43,6 +48,9 @@ const entitiesList = [
   CompanyModel, 
   DepartmentModel,
   EmployeeModel, 
+  AttendanceModel,
+  LeaveRequestModel,
+  PerformanceReviewModel,
   BranchModel,
   ClientModel,
   ProjectCategoryModel,
@@ -303,30 +311,24 @@ export async function getDataSource(): Promise<DataSource> {
     }
   }
 
-  // Dynamically attach any newly added models without breaking active connections
-  if (
-    AppDataSource.isInitialized &&
-    !AppDataSource.entityMetadatas.some(m => m.name === 'MaterialApprovalModel' || m.tableName === 'material_approvals')
-  ) {
+  // Auto-refresh DataSource if any newly added models are missing in the cached global instance
+  const hasHrModels = AppDataSource.isInitialized &&
+    AppDataSource.entityMetadatas.some(m => m.tableName === 'attendances') &&
+    AppDataSource.entityMetadatas.some(m => m.tableName === 'leave_requests') &&
+    AppDataSource.entityMetadatas.some(m => m.tableName === 'performance_reviews');
+
+  if (AppDataSource.isInitialized && !hasHrModels) {
+    console.log('[DataSource] Missing HR models in cached DataSource. Re-initializing clean DataSource...');
     try {
-      const { getMetadataArgsStorage } = require('typeorm');
-      const { EntityMetadataBuilder } = require('typeorm/metadata-builder/EntityMetadataBuilder');
-      const builder = new EntityMetadataBuilder(AppDataSource, getMetadataArgsStorage());
-      const built = builder.build([MaterialApprovalModel]);
-      for (const meta of built) {
-        if (!AppDataSource.entityMetadatas.some(m => m.name === meta.name || m.tableName === meta.tableName)) {
-          meta.connection = AppDataSource;
-          AppDataSource.entityMetadatas.push(meta);
-          if ((AppDataSource as any).entityMetadatasMap) {
-            (AppDataSource as any).entityMetadatasMap.set(meta.target, meta);
-            (AppDataSource as any).entityMetadatasMap.set(meta.name, meta);
-            (AppDataSource as any).entityMetadatasMap.set(meta.tableName, meta);
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[DataSource] Failed merging fresh entity metadata:', err);
+      await AppDataSource.destroy();
+    } catch (e) {
+      // ignore
     }
+    AppDataSource = createDataSource();
+    await AppDataSource.initialize();
+    applyPatches(AppDataSource);
+    globalRef.AppDataSource = AppDataSource;
+    console.log('[DataSource] DataSource re-initialized with all models successfully.');
   }
 
   return AppDataSource;
