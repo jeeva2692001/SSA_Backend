@@ -29,9 +29,22 @@ export class UserRepository {
       .getOne();
   }
 
+  async findByName(name: string): Promise<UserModel | null> {
+    if (!name) return null;
+    const repo = await this.getRepository();
+    return await repo.createQueryBuilder('user')
+      .where('TRIM(LOWER(user.name)) = :name', { name: name.trim().toLowerCase() })
+      .getOne();
+  }
+
   async createUser(userData: Partial<UserModel>): Promise<UserModel> {
     const repo = await this.getRepository();
     const user = repo.create(userData);
+    return await repo.save(user);
+  }
+
+  async saveUser(user: UserModel): Promise<UserModel> {
+    const repo = await this.getRepository();
     return await repo.save(user);
   }
 

@@ -5,6 +5,7 @@ import { UserModel } from '../models/user.model';
 import { CompanyRepository } from '../../company/repositories/company.repository';
 import { CompanyModel } from '../../company/models/company.model';
 import { BranchModel } from '../../branch/models/branch.model';
+import { EmployeeModel } from '../../employee/models/employee.model';
 import { getDataSource } from '../../../shared/config/data-source';
 
 import { RbacService } from '../../rbac/services/rbac.service';
@@ -117,8 +118,11 @@ export class AuthService {
     const trimmedUser = (username || '').trim();
     const trimmedPass = (password || '').trim();
 
-    // 1. Try to find in UserRepository (by userId or email)
+    // 1. Try to find in UserRepository (by userId, employee name, or email)
     let user = await this.userRepository.findByUserId(trimmedUser);
+    if (!user) {
+      user = await this.userRepository.findByName(trimmedUser);
+    }
     if (!user) {
       user = await this.userRepository.findByEmail(trimmedUser);
     }
@@ -157,12 +161,32 @@ export class AuthService {
         };
       }
 
+      // Check if this user is linked to an Employee record
+      let employee = null;
+      try {
+        const dataSource = await getDataSource();
+        const empRepo = dataSource.getRepository(EmployeeModel);
+        if (user.email) {
+          employee = await empRepo.findOne({ where: { email: user.email } });
+        }
+        if (!employee && user.name) {
+          employee = await empRepo.createQueryBuilder('employee')
+            .where('LOWER(employee.name) = :name', { name: user.name.trim().toLowerCase() })
+            .getOne();
+        }
+      } catch (empErr) {
+        console.warn('Could not query employee for user login:', empErr);
+      }
+
       const token = jwt.sign(
         {
           id: user.id,
           userId: user.userId,
           email: user.email,
           role: user.role,
+          companyId: employee?.companyId,
+          employeeId: employee?.employeeId,
+          branchId: employee?.branchId,
         },
         JWT_SECRET,
         { expiresIn: JWT_EXPIRY as any }
@@ -177,6 +201,9 @@ export class AuthService {
         email: user.email,
         role: user.role,
         avatar: user.avatar,
+        companyId: employee?.companyId,
+        employeeId: employee?.employeeId,
+        branchId: employee?.branchId,
         mustChangePassword: false,
         permissions,
       };

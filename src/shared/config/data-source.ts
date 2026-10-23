@@ -5,7 +5,12 @@ import { TestModel } from "../../modules/test/models/test.model";
 import { UserModel } from "../../modules/auth/models/user.model";
 import { CompanyModel } from "../../modules/company/models/company.model";
 import { DepartmentModel } from "../../modules/company/models/department.model";
-import { EmployeeModel } from "../../modules/employee/models/employee.model";
+import {
+  EmployeeModel,
+  AttendanceModel,
+  LeaveRequestModel,
+  PerformanceReviewModel
+} from "../../modules/employee";
 import { BranchModel } from "../../modules/branch/models/branch.model";
 import { ProjectCategoryModel } from "../../modules/lead/models/project-category.model";
 import { CategoryTaglineModel } from "../../modules/lead/models/category-tagline.model";
@@ -43,6 +48,9 @@ const entitiesList = [
   CompanyModel, 
   DepartmentModel,
   EmployeeModel, 
+  AttendanceModel,
+  LeaveRequestModel,
+  PerformanceReviewModel,
   BranchModel,
   ClientModel,
   ProjectCategoryModel,
@@ -153,7 +161,10 @@ if (globalRef.AppDataSource) {
     'ClientBriefModel',
     'MomModel',
     'SiteReportModel',
-    'MaterialApprovalModel'
+    'MaterialApprovalModel',
+    'AttendanceModel',
+    'LeaveRequestModel',
+    'PerformanceReviewModel'
   ];
   const missing = requiredEntities.some(name => !entityNames.includes(name));
   if (missing) {
@@ -194,8 +205,17 @@ export async function getDataSource(): Promise<DataSource> {
     const hasMaterialApproval = AppDataSource.entityMetadatas.some(
       m => m.name === 'MaterialApprovalModel' || m.tableName === 'material_approvals'
     );
-    if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity || !hasMilestone || !hasMaterialApproval) {
-      console.log('[DataSource] Re-creating AppDataSource to load new entities (OpportunityModel / InvoiceModel / DepartmentModel / RolePermissionModel / MilestoneModel / MaterialApprovalModel)...');
+    const hasAttendance = AppDataSource.entityMetadatas.some(
+      m => m.name === 'AttendanceModel' || m.tableName === 'attendance'
+    );
+    const hasLeave = AppDataSource.entityMetadatas.some(
+      m => m.name === 'LeaveRequestModel' || m.tableName === 'leave_requests'
+    );
+    const hasPerformance = AppDataSource.entityMetadatas.some(
+      m => m.name === 'PerformanceReviewModel' || m.tableName === 'performance_reviews'
+    );
+    if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity || !hasMilestone || !hasMaterialApproval || !hasAttendance || !hasLeave || !hasPerformance) {
+      console.log('[DataSource] Re-creating AppDataSource to load new entities (AttendanceModel / LeaveRequestModel / PerformanceReviewModel etc)...');
       try {
         await AppDataSource.destroy();
       } catch {}

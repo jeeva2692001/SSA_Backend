@@ -34,14 +34,40 @@ export async function authMiddleware(req: NextRequest, next: (user: any) => Prom
       return NextResponse.json({ message: 'User does not exist.' }, { status: 401 });
     }
 
-    // Attach role and companyId to the user object dynamically
+    // Attach role, companyId, employeeId, and branchId to the user object dynamically
     (user as any).role = decoded.role;
     if (decoded.companyId) {
       (user as any).companyId = decoded.companyId;
-    } else if ((user as any).companyId) {
-      // already has companyId
     } else if (decoded.role === 'Company') {
       (user as any).companyId = (user as any).companyId || (user as any).id;
+    }
+
+    if (decoded.employeeId) {
+      (user as any).employeeId = decoded.employeeId;
+    }
+    if (decoded.branchId) {
+      (user as any).branchId = decoded.branchId;
+    }
+
+    // Fallback: If companyId or employeeId missing for non-company user, query EmployeeModel
+    const userEmail = (user as any).email;
+    const userName = (user as any).name;
+    if ((!(user as any).companyId || !(user as any).employeeId) && userEmail && decoded.role !== 'Super Admin') {
+      try {
+        const { getDataSource } = await import('../../../shared/config/data-source');
+        const { EmployeeModel } = await import('../../employee/models/employee.model');
+        const dataSource = await getDataSource();
+        const emp = await dataSource.getRepository(EmployeeModel).findOne({
+          where: [{ email: userEmail }, { name: userName }]
+        });
+        if (emp) {
+          (user as any).companyId = (user as any).companyId || emp.companyId;
+          (user as any).employeeId = (user as any).employeeId || emp.employeeId;
+          (user as any).branchId = (user as any).branchId || emp.branchId;
+        }
+      } catch (e) {
+        // ignore fallback error
+      }
     }
 
     return await next(user);
