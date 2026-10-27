@@ -89,6 +89,22 @@ export class OpportunityService {
           if (!existing.expectedClosureDate && lead.expectedCompletionDate) {
             existing.expectedClosureDate = lead.expectedCompletionDate;
           }
+          if (existing.stage === 'Won') {
+            // Live deal was marked Won: preserve Won stage and sync Won status to lead
+            if (!lead.status || !lead.status.toLowerCase().includes('won')) {
+              lead.status = 'Won';
+              await leadRepo.save(lead);
+            }
+          } else if (stage === 'Won') {
+            existing.stage = 'Won';
+            existing.probability = 100;
+          } else if (existing.stage !== stage) {
+            existing.stage = stage;
+            existing.probability = this.getDefaultProbabilityForStage(stage);
+          }
+          if (lead.clientId && (!existing.clientId || existing.clientId !== lead.clientId)) {
+            existing.clientId = lead.clientId;
+          }
           await oppModelRepo.save(existing);
         }
       }
@@ -177,24 +193,34 @@ export class OpportunityService {
             lead.status = 'Won';
 
             // Ensure Client exists in database for this Won Deal
+            const isUUID = (str?: string | null) => Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim()));
             let client: ClientModel | null = null;
             if (existing.clientId) {
-              client = await clientRepo.findOne({ where: { id: existing.clientId } });
+              client = isUUID(existing.clientId)
+                ? await clientRepo.findOne({ where: { id: existing.clientId } })
+                : await clientRepo.findOne({ where: { clientCode: existing.clientId } });
             }
             if (!client && lead.clientId) {
-              client = await clientRepo.findOne({ where: { id: lead.clientId } });
+              client = isUUID(lead.clientId)
+                ? await clientRepo.findOne({ where: { id: lead.clientId } })
+                : await clientRepo.findOne({ where: { clientCode: lead.clientId } });
             }
             if (!client && lead.mobile) {
               client = await clientRepo.findOne({ where: { mobile: lead.mobile.trim() } });
             }
-            if (!client && (lead.company || lead.contactPerson)) {
-              const compName = (lead.company || lead.contactPerson || '').trim();
-              client = await clientRepo.findOne({
-                where: [
-                  { company: compName },
-                  { clientName: compName }
-                ]
-              });
+            if (!client && (lead.company || lead.contactPerson || lead.clientName || existing.clientName || existing.company)) {
+              const compName = (lead.company || existing.company || '').trim();
+              const persName = (lead.contactPerson || lead.clientName || existing.clientName || '').trim();
+              const conditions: any[] = [];
+              if (compName) {
+                conditions.push({ company: compName }, { clientName: compName });
+              }
+              if (persName) {
+                conditions.push({ contactPerson: persName }, { clientName: persName });
+              }
+              if (conditions.length > 0) {
+                client = await clientRepo.findOne({ where: conditions });
+              }
             }
 
             // If not existing, automatically create Client record

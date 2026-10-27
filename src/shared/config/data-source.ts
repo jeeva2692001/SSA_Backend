@@ -41,6 +41,7 @@ import {
   SiteReportModel,
   MaterialApprovalModel
 } from "../../modules/document/models";
+import { VendorModel } from "../../modules/vendor/models/vendor.model";
 
 const entitiesList = [
   TestModel, 
@@ -76,7 +77,8 @@ const entitiesList = [
   ClientBriefModel,
   MomModel,
   SiteReportModel,
-  MaterialApprovalModel
+  MaterialApprovalModel,
+  VendorModel
 ];
 
 export function createDataSource(): DataSource {
@@ -164,7 +166,8 @@ if (globalRef.AppDataSource) {
     'MaterialApprovalModel',
     'AttendanceModel',
     'LeaveRequestModel',
-    'PerformanceReviewModel'
+    'PerformanceReviewModel',
+    'VendorModel'
   ];
   const missing = requiredEntities.some(name => !entityNames.includes(name));
   if (missing) {
@@ -214,8 +217,11 @@ export async function getDataSource(): Promise<DataSource> {
     const hasPerformance = AppDataSource.entityMetadatas.some(
       m => m.name === 'PerformanceReviewModel' || m.tableName === 'performance_reviews'
     );
-    if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity || !hasMilestone || !hasMaterialApproval || !hasAttendance || !hasLeave || !hasPerformance) {
-      console.log('[DataSource] Re-creating AppDataSource to load new entities (AttendanceModel / LeaveRequestModel / PerformanceReviewModel etc)...');
+    const hasVendor = AppDataSource.entityMetadatas.some(
+      m => m.name === 'VendorModel' || m.tableName === 'vendors'
+    );
+    if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity || !hasMilestone || !hasMaterialApproval || !hasAttendance || !hasLeave || !hasPerformance || !hasVendor) {
+      console.log('[DataSource] Re-creating AppDataSource to load new entities (VendorModel / AttendanceModel etc)...');
       try {
         await AppDataSource.destroy();
       } catch {}
@@ -321,18 +327,28 @@ export async function getDataSource(): Promise<DataSource> {
     } catch (err) {
       console.error('[Seed] Error seeding default opportunities:', err);
     }
+
+    // Seed default Vendors
+    try {
+      const { VendorService } = await import('../../modules/vendor/services/vendor.service');
+      const vendorService = new VendorService();
+      await vendorService.ensureSeeded();
+    } catch (err) {
+      console.error('[Seed] Error seeding default vendors:', err);
+    }
   }
 
   // Dynamically attach any newly added models without breaking active connections
   if (
     AppDataSource.isInitialized &&
-    !AppDataSource.entityMetadatas.some(m => m.name === 'MaterialApprovalModel' || m.tableName === 'material_approvals')
+    (!AppDataSource.entityMetadatas.some(m => m.name === 'MaterialApprovalModel' || m.tableName === 'material_approvals') ||
+     !AppDataSource.entityMetadatas.some(m => m.name === 'VendorModel' || m.tableName === 'vendors'))
   ) {
     try {
       const { getMetadataArgsStorage } = require('typeorm');
       const { EntityMetadataBuilder } = require('typeorm/metadata-builder/EntityMetadataBuilder');
       const builder = new EntityMetadataBuilder(AppDataSource, getMetadataArgsStorage());
-      const built = builder.build([MaterialApprovalModel]);
+      const built = builder.build([MaterialApprovalModel, VendorModel]);
       for (const meta of built) {
         if (!AppDataSource.entityMetadatas.some(m => m.name === meta.name || m.tableName === meta.tableName)) {
           meta.connection = AppDataSource;
