@@ -20,7 +20,7 @@ export class LeaveRequestModel {
   @Column({ type: 'varchar' })
   employeeName!: string;
 
-  @Column({ type: 'varchar' })
+  @Column({ type: 'varchar', default: 'Casual' })
   leaveType!: string; // 'Casual' | 'Sick' | 'Privilege' | 'Maternity' | 'Unpaid'
 
   @Column({ type: 'varchar' })
