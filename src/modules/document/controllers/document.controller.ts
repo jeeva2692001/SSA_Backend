@@ -250,4 +250,118 @@ export class DocumentController {
       return NextResponse.json({ success: false, message: err.message }, { status: 500 });
     }
   }
+
+  // ==========================================
+  // QA/QC CHECKLISTS
+  // ==========================================
+  async getQaqcChecklists(req: NextRequest, user: any) {
+    try {
+      const { searchParams } = new URL(req.url);
+      const companyId = this.getCompanyId(user, searchParams);
+      const category = searchParams.get('category') || undefined;
+      const checklists = await this.documentService.getAllQaqcChecklists(companyId, category);
+      return NextResponse.json({ success: true, data: checklists });
+    } catch (err: any) {
+      console.error('[DocumentController] getQaqcChecklists error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  async createQaqcChecklist(req: NextRequest, user: any) {
+    try {
+      const body = await req.json();
+      if (!body.title) {
+        return NextResponse.json({ success: false, message: 'Checklist Title is required.' }, { status: 400 });
+      }
+      const companyId = this.getCompanyId(user);
+      const checklist = await this.documentService.createQaqcChecklist(body, companyId, user);
+      return NextResponse.json({ success: true, data: checklist });
+    } catch (err: any) {
+      console.error('[DocumentController] createQaqcChecklist error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  async updateQaqcChecklist(req: NextRequest, id: string, user: any) {
+    try {
+      const body = await req.json();
+      const companyId = this.getCompanyId(user);
+      const updated = await this.documentService.updateQaqcChecklist(id, body, companyId);
+      return NextResponse.json({ success: true, data: updated });
+    } catch (err: any) {
+      console.error('[DocumentController] updateQaqcChecklist error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  async deleteQaqcChecklist(req: NextRequest, id: string, user: any) {
+    try {
+      const companyId = this.getCompanyId(user);
+      const success = await this.documentService.deleteQaqcChecklist(id, companyId);
+      if (!success) {
+        return NextResponse.json({ success: false, message: 'Checklist not found.' }, { status: 404 });
+      }
+      return NextResponse.json({ success: true, message: 'Checklist deleted successfully.' });
+    } catch (err: any) {
+      console.error('[DocumentController] deleteQaqcChecklist error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  // ==========================================
+  // QA/QC AUDIT RUNS
+  // ==========================================
+  async getQaqcAudits(req: NextRequest, user: any) {
+    try {
+      const { searchParams } = new URL(req.url);
+      const companyId = this.getCompanyId(user, searchParams);
+      const project = searchParams.get('project') || undefined;
+      const audits = await this.documentService.getAllQaqcAudits(companyId, project);
+      return NextResponse.json({ success: true, data: audits });
+    } catch (err: any) {
+      console.error('[DocumentController] getQaqcAudits error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  async createQaqcAudit(req: NextRequest, user: any) {
+    try {
+      const body = await req.json();
+      if (!body.checklistId) {
+        return NextResponse.json({ success: false, message: 'Checklist ID is required to execute an audit.' }, { status: 400 });
+      }
+      const companyId = this.getCompanyId(user);
+      const audit = await this.documentService.createQaqcAudit(body, companyId, user);
+      return NextResponse.json({ success: true, data: audit });
+    } catch (err: any) {
+      console.error('[DocumentController] createQaqcAudit error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  async updateQaqcAudit(req: NextRequest, id: string, user: any) {
+    try {
+      const body = await req.json();
+      const companyId = this.getCompanyId(user);
+      const updated = await this.documentService.updateQaqcAudit(id, body, companyId, user);
+      return NextResponse.json({ success: true, data: updated });
+    } catch (err: any) {
+      console.error('[DocumentController] updateQaqcAudit error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
+
+  async deleteQaqcAudit(req: NextRequest, id: string, user: any) {
+    try {
+      const companyId = this.getCompanyId(user);
+      const success = await this.documentService.deleteQaqcAudit(id, companyId);
+      if (!success) {
+        return NextResponse.json({ success: false, message: 'Audit run not found.' }, { status: 404 });
+      }
+      return NextResponse.json({ success: true, message: 'Audit run deleted successfully.' });
+    } catch (err: any) {
+      console.error('[DocumentController] deleteQaqcAudit error:', err);
+      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+    }
+  }
 }
