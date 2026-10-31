@@ -39,7 +39,9 @@ import {
   ClientBriefModel,
   MomModel,
   SiteReportModel,
-  MaterialApprovalModel
+  MaterialApprovalModel,
+  QaqcChecklistModel,
+  QaqcAuditModel
 } from "../../modules/document/models";
 import { VendorModel } from "../../modules/vendor/models/vendor.model";
 import { TaskModel } from "../../modules/task/models/task.model";
@@ -370,13 +372,15 @@ export async function getDataSource(): Promise<DataSource> {
   if (
     AppDataSource.isInitialized &&
     (!AppDataSource.entityMetadatas.some(m => m.name === 'MaterialApprovalModel' || m.tableName === 'material_approvals') ||
-     !AppDataSource.entityMetadatas.some(m => m.name === 'VendorModel' || m.tableName === 'vendors'))
+     !AppDataSource.entityMetadatas.some(m => m.name === 'VendorModel' || m.tableName === 'vendors') ||
+     !AppDataSource.entityMetadatas.some(m => m.name === 'QaqcChecklistModel' || m.tableName === 'qaqc_checklists') ||
+     !AppDataSource.entityMetadatas.some(m => m.name === 'QaqcAuditModel' || m.tableName === 'qaqc_audits'))
   ) {
     try {
       const { getMetadataArgsStorage } = require('typeorm');
       const { EntityMetadataBuilder } = require('typeorm/metadata-builder/EntityMetadataBuilder');
       const builder = new EntityMetadataBuilder(AppDataSource, getMetadataArgsStorage());
-      const built = builder.build([MaterialApprovalModel, VendorModel]);
+      const built = builder.build([MaterialApprovalModel, VendorModel, QaqcChecklistModel, QaqcAuditModel]);
       for (const meta of built) {
         if (!AppDataSource.entityMetadatas.some(m => m.name === meta.name || m.tableName === meta.tableName)) {
           meta.connection = AppDataSource;
