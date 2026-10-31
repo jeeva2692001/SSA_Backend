@@ -5,7 +5,12 @@ import { TestModel } from "../../modules/test/models/test.model";
 import { UserModel } from "../../modules/auth/models/user.model";
 import { CompanyModel } from "../../modules/company/models/company.model";
 import { DepartmentModel } from "../../modules/company/models/department.model";
-import { EmployeeModel } from "../../modules/employee/models/employee.model";
+import {
+  EmployeeModel,
+  AttendanceModel,
+  LeaveRequestModel,
+  PerformanceReviewModel
+} from "../../modules/employee";
 import { BranchModel } from "../../modules/branch/models/branch.model";
 import { ProjectCategoryModel } from "../../modules/lead/models/project-category.model";
 import { CategoryTaglineModel } from "../../modules/lead/models/category-tagline.model";
@@ -34,8 +39,14 @@ import {
   ClientBriefModel,
   MomModel,
   SiteReportModel,
-  MaterialApprovalModel
+  MaterialApprovalModel,
+  QaqcChecklistModel,
+  QaqcAuditModel
 } from "../../modules/document/models";
+import { VendorModel } from "../../modules/vendor/models/vendor.model";
+import { TaskModel } from "../../modules/task/models/task.model";
+import { AssetModel, MaterialStockModel } from "../../modules/inventory/models";
+import { EquipmentModel, ResourceAllocationModel } from "../../modules/resource/models";
 
 const entitiesList = [
   TestModel, 
@@ -43,6 +54,9 @@ const entitiesList = [
   CompanyModel, 
   DepartmentModel,
   EmployeeModel, 
+  AttendanceModel,
+  LeaveRequestModel,
+  PerformanceReviewModel,
   BranchModel,
   ClientModel,
   ProjectCategoryModel,
@@ -68,7 +82,13 @@ const entitiesList = [
   ClientBriefModel,
   MomModel,
   SiteReportModel,
-  MaterialApprovalModel
+  MaterialApprovalModel,
+  VendorModel,
+  TaskModel,
+  AssetModel,
+  MaterialStockModel,
+  EquipmentModel,
+  ResourceAllocationModel
 ];
 
 export function createDataSource(): DataSource {
@@ -153,7 +173,16 @@ if (globalRef.AppDataSource) {
     'ClientBriefModel',
     'MomModel',
     'SiteReportModel',
-    'MaterialApprovalModel'
+    'MaterialApprovalModel',
+    'AttendanceModel',
+    'LeaveRequestModel',
+    'PerformanceReviewModel',
+    'VendorModel',
+    'TaskModel',
+    'AssetModel',
+    'MaterialStockModel',
+    'EquipmentModel',
+    'ResourceAllocationModel'
   ];
   const missing = requiredEntities.some(name => !entityNames.includes(name));
   if (missing) {
@@ -194,8 +223,35 @@ export async function getDataSource(): Promise<DataSource> {
     const hasMaterialApproval = AppDataSource.entityMetadatas.some(
       m => m.name === 'MaterialApprovalModel' || m.tableName === 'material_approvals'
     );
-    if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity || !hasMilestone || !hasMaterialApproval) {
-      console.log('[DataSource] Re-creating AppDataSource to load new entities (OpportunityModel / InvoiceModel / DepartmentModel / RolePermissionModel / MilestoneModel / MaterialApprovalModel)...');
+    const hasAttendance = AppDataSource.entityMetadatas.some(
+      m => m.name === 'AttendanceModel' || m.tableName === 'attendance'
+    );
+    const hasLeave = AppDataSource.entityMetadatas.some(
+      m => m.name === 'LeaveRequestModel' || m.tableName === 'leave_requests'
+    );
+    const hasPerformance = AppDataSource.entityMetadatas.some(
+      m => m.name === 'PerformanceReviewModel' || m.tableName === 'performance_reviews'
+    );
+    const hasVendor = AppDataSource.entityMetadatas.some(
+      m => m.name === 'VendorModel' || m.tableName === 'vendors'
+    );
+    const hasTask = AppDataSource.entityMetadatas.some(
+      m => m.name === 'TaskModel' || m.tableName === 'tasks'
+    );
+    const hasAsset = AppDataSource.entityMetadatas.some(
+      m => m.name === 'AssetModel' || m.tableName === 'assets'
+    );
+    const hasMaterial = AppDataSource.entityMetadatas.some(
+      m => m.name === 'MaterialStockModel' || m.tableName === 'materials'
+    );
+    const hasEquipment = AppDataSource.entityMetadatas.some(
+      m => m.name === 'EquipmentModel' || m.tableName === 'equipment'
+    );
+    const hasResourceAllocation = AppDataSource.entityMetadatas.some(
+      m => m.name === 'ResourceAllocationModel' || m.tableName === 'resource_allocations'
+    );
+    if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity || !hasMilestone || !hasMaterialApproval || !hasAttendance || !hasLeave || !hasPerformance || !hasVendor || !hasTask || !hasAsset || !hasMaterial || !hasEquipment || !hasResourceAllocation) {
+      console.log('[DataSource] Re-creating AppDataSource to load new entities (EquipmentModel / ResourceAllocationModel etc)...');
       try {
         await AppDataSource.destroy();
       } catch {}
@@ -301,18 +357,30 @@ export async function getDataSource(): Promise<DataSource> {
     } catch (err) {
       console.error('[Seed] Error seeding default opportunities:', err);
     }
+
+    // Seed default Vendors
+    try {
+      const { VendorService } = await import('../../modules/vendor/services/vendor.service');
+      const vendorService = new VendorService();
+      await vendorService.ensureSeeded();
+    } catch (err) {
+      console.error('[Seed] Error seeding default vendors:', err);
+    }
   }
 
   // Dynamically attach any newly added models without breaking active connections
   if (
     AppDataSource.isInitialized &&
-    !AppDataSource.entityMetadatas.some(m => m.name === 'MaterialApprovalModel' || m.tableName === 'material_approvals')
+    (!AppDataSource.entityMetadatas.some(m => m.name === 'MaterialApprovalModel' || m.tableName === 'material_approvals') ||
+     !AppDataSource.entityMetadatas.some(m => m.name === 'VendorModel' || m.tableName === 'vendors') ||
+     !AppDataSource.entityMetadatas.some(m => m.name === 'QaqcChecklistModel' || m.tableName === 'qaqc_checklists') ||
+     !AppDataSource.entityMetadatas.some(m => m.name === 'QaqcAuditModel' || m.tableName === 'qaqc_audits'))
   ) {
     try {
       const { getMetadataArgsStorage } = require('typeorm');
       const { EntityMetadataBuilder } = require('typeorm/metadata-builder/EntityMetadataBuilder');
       const builder = new EntityMetadataBuilder(AppDataSource, getMetadataArgsStorage());
-      const built = builder.build([MaterialApprovalModel]);
+      const built = builder.build([MaterialApprovalModel, VendorModel, QaqcChecklistModel, QaqcAuditModel]);
       for (const meta of built) {
         if (!AppDataSource.entityMetadatas.some(m => m.name === meta.name || m.tableName === meta.tableName)) {
           meta.connection = AppDataSource;

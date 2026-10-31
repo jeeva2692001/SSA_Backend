@@ -138,9 +138,8 @@ export class ClientRepository {
       .leftJoinAndSelect('lead.category', 'category')
       .where('lead.clientId = :clientId', { clientId });
 
-    if (clientName) {
-      query.orWhere('lead.clientName = :clientName', { clientName })
-           .orWhere('lead.company = :clientName', { clientName });
+    if (clientName && clientName.trim()) {
+      query.orWhere('(lead.clientId IS NULL AND LOWER(TRIM(lead.clientName)) = LOWER(TRIM(:clientName)))', { clientName: clientName.trim() });
     }
 
     return await query.orderBy('lead.createdAt', 'DESC').getMany();
@@ -152,8 +151,8 @@ export class ClientRepository {
     const query = repo.createQueryBuilder('project')
       .where('project.clientId = :clientId', { clientId });
 
-    if (clientName) {
-      query.orWhere('project.clientName = :clientName', { clientName });
+    if (clientName && clientName.trim()) {
+      query.orWhere('(project.clientId IS NULL AND LOWER(TRIM(project.clientName)) = LOWER(TRIM(:clientName)))', { clientName: clientName.trim() });
     }
 
     return await query.orderBy('project.createdAt', 'DESC').getMany();

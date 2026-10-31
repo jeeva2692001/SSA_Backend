@@ -23,6 +23,18 @@ export class EmployeeRepository {
     return await repo.findOne({ where: { email, companyId } });
   }
 
+  async findByEmail(email: string): Promise<EmployeeModel | null> {
+    const repo = await this.getRepository();
+    return await repo.findOne({ where: { email } });
+  }
+
+  async findByName(name: string): Promise<EmployeeModel | null> {
+    const repo = await this.getRepository();
+    return await repo.createQueryBuilder('employee')
+      .where('LOWER(employee.name) = :name', { name: name.trim().toLowerCase() })
+      .getOne();
+  }
+
   async createEmployee(employeeData: Partial<EmployeeModel>): Promise<EmployeeModel> {
     const repo = await this.getRepository();
     const employee = repo.create(employeeData);

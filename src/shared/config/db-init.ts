@@ -661,6 +661,18 @@ async function main() {
     await oppService.ensureSeeded();
     console.log('[DB-Init] Seeding Opportunities complete.');
 
+    // Seed Tasks Management
+    const { TaskService } = require('../../modules/task/services/task.service');
+    const taskService = new TaskService();
+    await taskService.ensureSeeded();
+    console.log('[DB-Init] Seeding Tasks complete.');
+
+    // Seed Store & Inventory (Assets & Materials)
+    const { InventoryService } = require('../../modules/inventory/services/inventory.service');
+    const inventoryService = new InventoryService();
+    await inventoryService.ensureSeeded();
+    console.log('[DB-Init] Seeding Store & Inventory complete.');
+
     console.log('[DB-Init] Database initialization complete.');
     
     process.exit(0);
