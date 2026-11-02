@@ -42,6 +42,14 @@ export class CompanyRepository {
       .getOne();
   }
 
+  async findByName(name: string): Promise<CompanyModel | null> {
+    if (!name) return null;
+    const repo = await this.getRepository();
+    return await repo.createQueryBuilder('company')
+      .where('TRIM(LOWER(company.name)) = :name', { name: name.trim().toLowerCase() })
+      .getOne();
+  }
+
   async createCompany(companyData: Partial<CompanyModel>): Promise<CompanyModel> {
     const repo = await this.getRepository();
     const company = repo.create(companyData);

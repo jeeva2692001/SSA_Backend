@@ -854,6 +854,38 @@ export class AuthService {
     if (!user && currentUser.userId) {
       user = await this.userRepository.findByUserId(currentUser.userId);
     }
+    if (!user && currentUser.email) {
+      user = await this.userRepository.findByEmail(currentUser.email);
+    }
+    if (!user && (currentUser.companyId || currentUser.role === 'Admin')) {
+      const targetCompId = currentUser.companyId || currentUser.id;
+      let comp = await this.companyRepository.findByCompanyId(targetCompId);
+      if (!comp && !isNaN(Number(targetCompId))) {
+        comp = await this.companyRepository.findById(Number(targetCompId));
+      }
+      if (comp) {
+        if (name && name.trim()) comp.contactPerson = name.trim();
+        if (email && email.trim()) comp.email = email.trim().toLowerCase();
+        if (mobileNumber || phone) {
+          comp.mobileNumber = (mobileNumber || phone || '').trim();
+          comp.phone = comp.mobileNumber;
+        }
+        const updatedComp = await this.companyRepository.createCompany(comp);
+        const permissions = await this.rbacService.getUserPermissions(currentUser.role || 'Company');
+        return {
+          id: updatedComp.companyId,
+          userId: updatedComp.companyId,
+          companyId: updatedComp.companyId,
+          name: updatedComp.name,
+          email: updatedComp.email,
+          role: currentUser.role || 'Company',
+          contactPerson: updatedComp.contactPerson,
+          status: updatedComp.status,
+          mustChangePassword: false,
+          permissions,
+        };
+      }
+    }
     if (!user) {
       throw new Error('User not found.');
     }

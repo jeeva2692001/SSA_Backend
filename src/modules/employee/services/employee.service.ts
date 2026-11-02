@@ -95,9 +95,35 @@ export class EmployeeService {
       throw new Error('Missing required employee fields.');
     }
 
-    const existing = await this.employeeRepository.findByEmailAndCompanyId(employeeData.email, companyId);
+    // Check if employee name (which serves as login username) is already in use
+    const trimmedName = employeeData.name.trim();
+    const existingName = await this.employeeRepository.findByName(trimmedName);
+    if (existingName) {
+      throw new Error(`Username "${trimmedName}" is already registered by another employee. Please choose a different name.`);
+    }
+
+    // Check if username is already registered in UserRepository
+    const existingUser = await this.userRepository.findByUserId(trimmedName);
+    const existingUserByName = await this.userRepository.findByName(trimmedName);
+    if (existingUser || existingUserByName) {
+      throw new Error(`Username "${trimmedName}" is already in use by an existing user account. Please choose a different name.`);
+    }
+
+    // Check if name conflicts with a company contact person
+    const existingCompany = await this.companyRepository.findByContactPerson(trimmedName);
+    if (existingCompany) {
+      throw new Error(`Username "${trimmedName}" is already registered as a company contact person. Please choose a different name.`);
+    }
+
+    const trimmedEmail = employeeData.email.trim().toLowerCase();
+    const existing = await this.employeeRepository.findByEmailAndCompanyId(trimmedEmail, companyId);
     if (existing) {
-      throw new Error('Employee email is already registered.');
+      throw new Error(`Employee email "${trimmedEmail}" is already registered.`);
+    }
+
+    const existingUserEmail = await this.userRepository.findByEmail(trimmedEmail);
+    if (existingUserEmail) {
+      throw new Error(`Email "${trimmedEmail}" is already registered to another user account.`);
     }
 
     if (employeeData.branchId) {
@@ -184,7 +210,14 @@ export class EmployeeService {
       throw new Error('Employee not found.');
     }
 
-    if (employeeData.name) employee.name = employeeData.name;
+    if (employeeData.name) {
+      const trimmedName = employeeData.name.trim();
+      const existingName = await this.employeeRepository.findByName(trimmedName);
+      if (existingName && existingName.employeeId !== employeeId) {
+        throw new Error(`Username "${trimmedName}" is already registered by another employee.`);
+      }
+      employee.name = trimmedName;
+    }
     if (employeeData.phone) employee.phone = employeeData.phone;
     if (employeeData.department) employee.department = employeeData.department;
     if (employeeData.designation) employee.designation = employeeData.designation;
@@ -205,11 +238,12 @@ export class EmployeeService {
     }
 
     if (employeeData.email) {
-      const existing = await this.employeeRepository.findByEmailAndCompanyId(employeeData.email, companyId);
+      const trimmedEmail = employeeData.email.trim().toLowerCase();
+      const existing = await this.employeeRepository.findByEmailAndCompanyId(trimmedEmail, companyId);
       if (existing && existing.employeeId !== employeeId) {
         throw new Error('Employee email is already registered.');
       }
-      employee.email = employeeData.email;
+      employee.email = trimmedEmail;
     }
 
     return await this.employeeRepository.createEmployee(employee);

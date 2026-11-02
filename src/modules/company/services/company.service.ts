@@ -1,12 +1,15 @@
 import { CompanyRepository } from '../repositories/company.repository';
 import { CompanyModel } from '../models/company.model';
+import { UserRepository } from '../../auth/repositories/user.repository';
 import bcrypt from 'bcryptjs';
 
 export class CompanyService {
   private companyRepository: CompanyRepository;
+  private userRepository: UserRepository;
 
   constructor() {
     this.companyRepository = new CompanyRepository();
+    this.userRepository = new UserRepository();
   }
 
   async getAllCompanies(): Promise<CompanyModel[]> {
@@ -132,14 +135,26 @@ export class CompanyService {
       throw new Error('Password cannot exceed 20 characters.');
     }
 
-    const existingEmail = await this.companyRepository.findByEmail(companyData.email?.trim() || '');
-    if (existingEmail) {
-      throw new Error('Company email is already registered.');
+    const trimmedCompanyName = companyData.name?.trim() || '';
+    const existingName = await this.companyRepository.findByName(trimmedCompanyName);
+    if (existingName) {
+      throw new Error(`Company name "${trimmedCompanyName}" is already registered. Please choose a different company name.`);
     }
 
-    const existingContactPerson = await this.companyRepository.findByContactPerson(companyData.contactPerson?.trim() || '');
+    const existingEmail = await this.companyRepository.findByEmail(companyData.email?.trim() || '');
+    if (existingEmail) {
+      throw new Error(`Company email "${companyData.email?.trim()}" is already registered.`);
+    }
+
+        const existingContactPerson = await this.companyRepository.findByContactPerson(trimmedContact);
     if (existingContactPerson) {
-      throw new Error('Contact person name (username) is already registered.');
+      throw new Error(`Username (contact person) "${trimmedContact}" is already registered. Please enter a different username.`);
+    }
+
+    const existingUser = await this.userRepository.findByUserId(trimmedContact);
+    const existingUserByName = await this.userRepository.findByName(trimmedContact);
+    if (existingUser || existingUserByName) {
+      throw new Error(`Username "${trimmedContact}" is already in use by an account. Please choose a different username.`);
     }
 
     // Generate unique companyId (COM-00X)
@@ -197,6 +212,10 @@ export class CompanyService {
       }
       if (!/[a-zA-Z]/.test(trimmedName)) {
         throw new Error('Company name must contain at least one letter.');
+      }
+      const existingName = await this.companyRepository.findByName(trimmedName);
+      if (existingName && existingName.companyId !== companyId) {
+        throw new Error(`Company name "${trimmedName}" is already registered.`);
       }
       company.name = companyData.name;
     }
