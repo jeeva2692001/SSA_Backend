@@ -67,30 +67,65 @@ export class VendorService {
     const companyId = data.companyId || context.companyId || 'COM-001';
     const branchId = data.branchId !== undefined ? data.branchId : (context.branchId || null);
 
-    const vendorCode = data.vendorCode || (await this.vendorRepo.getNextVendorCode(companyId));
+    if (data.vendorCode && data.vendorCode.trim()) {
+      const existing = await this.vendorRepo.findByCode(data.vendorCode.trim());
+      if (existing) {
+        throw new Error(`Vendor code "${data.vendorCode.trim()}" is already in use by vendor "${existing.vendorName}".`);
+      }
+    }
 
     const initialStatus: VendorApprovalStatus = data.approvalStatus || 'Pending Approval';
     const ratingNum = typeof data.rating === 'number' ? data.rating : (parseFloat(String(data.rating || '4.0')) || 4.0);
 
-    const vendor = await this.vendorRepo.create({
-      ...data,
-      vendorCode,
-      vendorName: data.vendorName.trim(),
-      category,
-      companyId,
-      branchId,
-      rating: Math.min(5, Math.max(1, ratingNum)),
-      approvalStatus: initialStatus,
-      contactPerson: data.contactPerson?.trim() || undefined,
-      mobile: data.mobile?.trim() || undefined,
-      email: data.email?.trim() || undefined,
-      tradeSpecialty: data.tradeSpecialty?.trim() || undefined,
-      address: data.address?.trim() || undefined,
-      city: data.city?.trim() || undefined,
-      state: data.state?.trim() || undefined,
-      gstNo: data.gstNo?.trim() || undefined,
-      panNo: data.panNo?.trim() || undefined
-    });
+    let attempts = 0;
+    const maxAttempts = 5;
+    let vendor: VendorModel | null = null;
+
+    while (attempts < maxAttempts) {
+      attempts++;
+      const vendorCode = (attempts === 1 && data.vendorCode?.trim())
+        ? data.vendorCode.trim()
+        : (await this.vendorRepo.getNextVendorCode(companyId));
+
+      try {
+        vendor = await this.vendorRepo.create({
+          ...data,
+          vendorCode,
+          vendorName: data.vendorName.trim(),
+          category,
+          companyId,
+          branchId,
+          rating: Math.min(5, Math.max(1, ratingNum)),
+          approvalStatus: initialStatus,
+          contactPerson: data.contactPerson?.trim() || undefined,
+          mobile: data.mobile?.trim() || undefined,
+          email: data.email?.trim() || undefined,
+          tradeSpecialty: data.tradeSpecialty?.trim() || undefined,
+          address: data.address?.trim() || undefined,
+          city: data.city?.trim() || undefined,
+          state: data.state?.trim() || undefined,
+          gstNo: data.gstNo?.trim() || undefined,
+          panNo: data.panNo?.trim() || undefined
+        });
+        break;
+      } catch (err: any) {
+        const isUniqueViolation =
+          err.code === '23505' ||
+          err.message?.includes('duplicate key') ||
+          err.message?.includes('unique constraint') ||
+          err.message?.includes('UQ_b6fe5f17015beb44a185f51273c') ||
+          err.message?.includes('vendorCode');
+
+        if (isUniqueViolation && attempts < maxAttempts && !data.vendorCode) {
+          continue;
+        }
+        throw err;
+      }
+    }
+
+    if (!vendor) {
+      throw new Error('Failed to create vendor record after multiple attempts.');
+    }
 
     return vendor;
   }
@@ -294,6 +329,10 @@ export class VendorService {
       ];
 
       for (const item of defaultVendors) {
+        if (!item.vendorCode) continue;
+        const existing = await this.vendorRepo.findByCode(item.vendorCode);
+        if (existing) continue;
+
         await this.vendorRepo.create({
           ...item,
           companyId: targetCompany,
