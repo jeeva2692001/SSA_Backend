@@ -116,7 +116,7 @@ export class VendorRepository {
     const prefix = `VEN-${year}-`;
 
     const allVendors = await repo.find({
-      select: ['vendorCode'] as any
+      select: { vendorCode: true }
     });
 
     const existingCodes = new Set<string>();

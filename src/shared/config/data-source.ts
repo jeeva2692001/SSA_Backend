@@ -383,7 +383,11 @@ export async function getDataSource(): Promise<DataSource> {
       const built = builder.build([MaterialApprovalModel, VendorModel, QaqcChecklistModel, QaqcAuditModel]);
       for (const meta of built) {
         if (!AppDataSource.entityMetadatas.some(m => m.name === meta.name || m.tableName === meta.tableName)) {
-          meta.connection = AppDataSource;
+          try {
+            (meta as any).connection = AppDataSource;
+          } catch {
+            // connection property is a getter only on EntityMetadata in newer TypeORM
+          }
           AppDataSource.entityMetadatas.push(meta);
           if ((AppDataSource as any).entityMetadatasMap) {
             (AppDataSource as any).entityMetadatasMap.set(meta.target, meta);
