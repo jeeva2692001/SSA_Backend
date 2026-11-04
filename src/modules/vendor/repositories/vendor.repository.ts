@@ -110,9 +110,47 @@ export class VendorRepository {
     return await repo.count({ where });
   }
 
-  async getNextVendorCode(companyId?: string): Promise<string> {
-    const count = await this.count(companyId);
+  async getNextVendorCode(_companyId?: string): Promise<string> {
+    const repo = await this.getRepo();
     const year = new Date().getFullYear();
-    return `VEN-${year}-${String(count + 1).padStart(3, '0')}`;
+    const prefix = `VEN-${year}-`;
+
+    const allVendors = await repo.find({
+      select: { vendorCode: true }
+    });
+
+    const existingCodes = new Set<string>();
+    let maxSeq = 0;
+    const seqRegex = new RegExp(`^VEN-${year}-(\\d+)$`, 'i');
+
+    for (const v of allVendors) {
+      if (!v.vendorCode) continue;
+      const codeUpper = v.vendorCode.trim().toUpperCase();
+      existingCodes.add(codeUpper);
+
+      const match = codeUpper.match(seqRegex);
+      if (match) {
+        const seq = parseInt(match[1], 10);
+        if (!isNaN(seq) && seq > maxSeq) {
+          maxSeq = seq;
+        }
+      }
+    }
+
+    let nextSeq = maxSeq + 1;
+    let candidate = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+
+    while (existingCodes.has(candidate.toUpperCase())) {
+      nextSeq++;
+      candidate = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+    }
+
+    while (await repo.findOne({ where: { vendorCode: candidate } })) {
+      existingCodes.add(candidate.toUpperCase());
+      nextSeq++;
+      candidate = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+    }
+
+    return candidate;
   }
 }
