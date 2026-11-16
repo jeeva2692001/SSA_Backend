@@ -34,8 +34,8 @@ function getCloudinarySignedUrl(url: string): string | null {
     const deliveryType = segments[2] || 'upload';
 
     let rest = segments.slice(3);
-    // Strip versions (v123456789) and transformation tokens (e.g. s--...--, w_200, f_png)
-    while (rest.length > 1 && (/^v\d+$/.test(rest[0]) || /^[a-z]_[^,]+/.test(rest[0]) || /^s--.*--$/.test(rest[0]))) {
+    // Strip versions (v123456789) and transformation tokens (e.g. s--...--, w_200, f_png, fl_inline)
+    while (rest.length > 1 && (/^v\d+$/.test(rest[0]) || /^[a-z]{1,4}_[^,]+/.test(rest[0]) || /^s--.*--$/.test(rest[0]))) {
       rest = rest.slice(1);
     }
 

@@ -1,6 +1,6 @@
 import { EquipmentRepository, EquipmentFilterOptions } from '../repositories/equipment.repository';
 import { ResourceAllocationRepository, AllocationFilterOptions } from '../repositories/resource-allocation.repository';
-import { EquipmentModel } from '../models/equipment.model';
+import { EquipmentModel, EquipmentCategory } from '../models/equipment.model';
 import { ResourceAllocationModel } from '../models/resource-allocation.model';
 import { getDataSource } from '../../../shared/config/data-source';
 import { EmployeeModel } from '../../employee/models/employee.model';
@@ -96,8 +96,66 @@ export class ResourceService {
     data: Partial<EquipmentModel>,
     context: { companyId?: string; branchId?: string | null }
   ): Promise<EquipmentModel> {
-    if (!data.name || !data.name.trim()) {
-      throw new Error('Equipment name is required.');
+    const nameTrimmed = data.name?.trim() || '';
+    if (!nameTrimmed) {
+      throw new Error('Equipment Title / Name is required.');
+    }
+    if (nameTrimmed.length < 2) {
+      throw new Error('Equipment Title / Name must be at least 2 characters long.');
+    }
+    if (nameTrimmed.length > 100) {
+      throw new Error('Equipment Title / Name cannot exceed 100 characters.');
+    }
+    if (!/[a-zA-Z]/.test(nameTrimmed)) {
+      throw new Error('Equipment Title / Name must contain letters and cannot be only numeric or special characters.');
+    }
+
+    if (data.modelNumber && data.modelNumber.trim()) {
+      const modelTrimmed = data.modelNumber.trim();
+      if (modelTrimmed.length < 2) {
+        throw new Error('Model Number must be at least 2 characters long.');
+      }
+      if (modelTrimmed.length > 50) {
+        throw new Error('Model Number cannot exceed 50 characters.');
+      }
+      if (!/[a-zA-Z]/.test(modelTrimmed)) {
+        throw new Error('Model Number must contain letters and cannot be only numeric or special characters.');
+      }
+    }
+
+    if (data.serialNumber && data.serialNumber.trim()) {
+      const serialTrimmed = data.serialNumber.trim();
+      if (serialTrimmed.length < 2) {
+        throw new Error('Serial Number must be at least 2 characters long.');
+      }
+      if (serialTrimmed.length > 50) {
+        throw new Error('Serial Number cannot exceed 50 characters.');
+      }
+      if (!/[a-zA-Z]/.test(serialTrimmed)) {
+        throw new Error('Serial Number must contain letters (e.g. SN-88942-CH) and cannot be only numeric or special characters.');
+      }
+    }
+
+    if (data.location && data.location.trim()) {
+      const locTrimmed = data.location.trim();
+      if (locTrimmed.length < 2) {
+        throw new Error('Location / Office Studio must be at least 2 characters long.');
+      }
+      if (locTrimmed.length > 100) {
+        throw new Error('Location / Office Studio cannot exceed 100 characters.');
+      }
+      if (!/[a-zA-Z]/.test(locTrimmed)) {
+        throw new Error('Location / Office Studio must contain letters (e.g. Chennai HQ - Studio A) and cannot be only numeric or special characters.');
+      }
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    if (data.warrantyExpiry && data.warrantyExpiry.trim() && data.warrantyExpiry.trim() < today) {
+      throw new Error('Warranty Expiry Date cannot be a past date.');
+    }
+
+    if (data.maintenanceDue && data.maintenanceDue.trim() && data.maintenanceDue.trim() < today) {
+      throw new Error('Next Maintenance Due date cannot be a past date.');
     }
 
     const companyId = context.companyId || 'COM-001';
@@ -105,6 +163,11 @@ export class ResourceService {
 
     return await this.equipmentRepo.create({
       ...data,
+      name: nameTrimmed,
+      category: (data.category?.trim() as EquipmentCategory) || 'Other',
+      modelNumber: data.modelNumber?.trim() || undefined,
+      serialNumber: data.serialNumber?.trim() || undefined,
+      location: data.location?.trim() || undefined,
       equipmentCode,
       companyId,
       branchId: data.branchId ?? context.branchId ?? null,
@@ -119,6 +182,74 @@ export class ResourceService {
     data: Partial<EquipmentModel>,
     _context: { companyId?: string }
   ): Promise<EquipmentModel | null> {
+    if (data.name !== undefined) {
+      const nameTrimmed = data.name.trim();
+      if (!nameTrimmed) {
+        throw new Error('Equipment Title / Name is required.');
+      }
+      if (nameTrimmed.length < 2) {
+        throw new Error('Equipment Title / Name must be at least 2 characters long.');
+      }
+      if (nameTrimmed.length > 100) {
+        throw new Error('Equipment Title / Name cannot exceed 100 characters.');
+      }
+      if (!/[a-zA-Z]/.test(nameTrimmed)) {
+        throw new Error('Equipment Title / Name must contain letters and cannot be only numeric or special characters.');
+      }
+      data.name = nameTrimmed;
+    }
+
+    if (data.modelNumber !== undefined && data.modelNumber.trim()) {
+      const modelTrimmed = data.modelNumber.trim();
+      if (modelTrimmed.length < 2) {
+        throw new Error('Model Number must be at least 2 characters long.');
+      }
+      if (modelTrimmed.length > 50) {
+        throw new Error('Model Number cannot exceed 50 characters.');
+      }
+      if (!/[a-zA-Z]/.test(modelTrimmed)) {
+        throw new Error('Model Number must contain letters and cannot be only numeric or special characters.');
+      }
+      data.modelNumber = modelTrimmed;
+    }
+
+    if (data.serialNumber !== undefined && data.serialNumber.trim()) {
+      const serialTrimmed = data.serialNumber.trim();
+      if (serialTrimmed.length < 2) {
+        throw new Error('Serial Number must be at least 2 characters long.');
+      }
+      if (serialTrimmed.length > 50) {
+        throw new Error('Serial Number cannot exceed 50 characters.');
+      }
+      if (!/[a-zA-Z]/.test(serialTrimmed)) {
+        throw new Error('Serial Number must contain letters (e.g. SN-88942-CH) and cannot be only numeric or special characters.');
+      }
+      data.serialNumber = serialTrimmed;
+    }
+
+    if (data.location !== undefined && data.location.trim()) {
+      const locTrimmed = data.location.trim();
+      if (locTrimmed.length < 2) {
+        throw new Error('Location / Office Studio must be at least 2 characters long.');
+      }
+      if (locTrimmed.length > 100) {
+        throw new Error('Location / Office Studio cannot exceed 100 characters.');
+      }
+      if (!/[a-zA-Z]/.test(locTrimmed)) {
+        throw new Error('Location / Office Studio must contain letters (e.g. Chennai HQ - Studio A) and cannot be only numeric or special characters.');
+      }
+      data.location = locTrimmed;
+    }
+
+    const today = new Date().toISOString().split('T')[0];
+    if (data.warrantyExpiry !== undefined && data.warrantyExpiry.trim() && data.warrantyExpiry.trim() < today) {
+      throw new Error('Warranty Expiry Date cannot be a past date.');
+    }
+
+    if (data.maintenanceDue !== undefined && data.maintenanceDue.trim() && data.maintenanceDue.trim() < today) {
+      throw new Error('Next Maintenance Due date cannot be a past date.');
+    }
+
     return await this.equipmentRepo.update(idOrCode, data);
   }
 
@@ -170,6 +301,9 @@ export class ResourceService {
     if (!data.projectName || !data.projectName.trim()) {
       throw new Error('Project name is required.');
     }
+    if (data.startDate && data.endDate && data.endDate.trim() < data.startDate.trim()) {
+      throw new Error('End Date cannot precede Start Date.');
+    }
 
     const companyId = context.companyId || 'COM-001';
     const allocationCode = data.allocationCode?.trim() || (await this.allocRepo.getNextAllocationCode(companyId));
@@ -209,6 +343,14 @@ export class ResourceService {
     data: Partial<ResourceAllocationModel>,
     _context: { companyId?: string }
   ): Promise<ResourceAllocationModel | null> {
+    const existing = await this.allocRepo.findByIdOrCode(idOrCode);
+    if (!existing) return null;
+    const effectiveStart = data.startDate ?? existing.startDate;
+    const effectiveEnd = data.endDate ?? existing.endDate;
+    if (effectiveStart && effectiveEnd && effectiveEnd.trim() < effectiveStart.trim()) {
+      throw new Error('End Date cannot precede Start Date.');
+    }
+
     const updated = await this.allocRepo.update(idOrCode, data);
 
     // If equipment allocation changed status to Completed, release equipment

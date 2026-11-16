@@ -7,7 +7,8 @@ export type EquipmentCategory =
   | 'Drone & Aerial'
   | 'VR & AR'
   | 'Measuring & Field'
-  | 'Other';
+  | 'Other'
+  | (string & {});
 
 export type EquipmentStatus = 'Available' | 'In Use' | 'Under Maintenance' | 'Decommissioned';
 export type EquipmentCondition = 'Excellent' | 'Good' | 'Fair' | 'Needs Repair';

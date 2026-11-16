@@ -26,21 +26,43 @@ export class ProjectController {
   async createProject(req: NextRequest, user: any) {
     try {
       const body = await req.json();
-      if (!body.projectName) {
+      if (!body.projectName || !body.projectName.trim()) {
         return NextResponse.json({ success: false, message: 'Project Name is required.' }, { status: 400 });
       }
+      const trimmedName = body.projectName.trim();
+      if (trimmedName.length < 2 || trimmedName.length > 50) {
+        return NextResponse.json({ success: false, message: 'Project Name must be between 2 and 50 characters.' }, { status: 400 });
+      }
+      if (!/[a-zA-Z]/.test(trimmedName)) {
+        return NextResponse.json({ success: false, message: 'Project Name must contain letters and cannot be only numeric or special characters.' }, { status: 400 });
+      }
+      if (!body.projectPrefix || !body.projectPrefix.trim()) {
+        return NextResponse.json({ success: false, message: 'Project Code Prefix is required.' }, { status: 400 });
+      }
+      const cleanPrefix = body.projectPrefix.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (cleanPrefix.length < 2 || cleanPrefix.length > 5) {
+        return NextResponse.json({ success: false, message: 'Project Code Prefix must be between 2 and 5 alphanumeric characters.' }, { status: 400 });
+      }
+      const budgetNum = Number(body.budget);
+      if (body.budget === undefined || body.budget === null || isNaN(budgetNum) || budgetNum <= 0) {
+        return NextResponse.json({ success: false, message: 'Agreed Contract / Project Value must be a valid positive amount.' }, { status: 400 });
+      }
+
       const companyId = user?.role === 'Super Admin'
         ? (body.companyId || user?.companyId)
         : user?.companyId;
 
       const project = await this.projectService.createProject({
         ...body,
+        projectName: trimmedName,
+        projectPrefix: cleanPrefix,
+        budget: budgetNum,
         companyId
       });
       return NextResponse.json({ success: true, data: project });
     } catch (err: any) {
       console.error('[ProjectController] createProject error:', err);
-      return NextResponse.json({ success: false, message: err.message }, { status: 500 });
+      return NextResponse.json({ success: false, message: err.message }, { status: 400 });
     }
   }
 
@@ -256,14 +278,27 @@ export class ProjectController {
   async createFolder(req: NextRequest, projectId: string, user: any) {
     try {
       const body = await req.json();
-      if (!body.name) {
+      if (!body.name || !body.name.trim()) {
         return NextResponse.json({ success: false, message: 'Folder name is required.' }, { status: 400 });
+      }
+      const trimmedName = body.name.trim();
+      if (trimmedName.length < 2 || trimmedName.length > 50) {
+        return NextResponse.json({ success: false, message: 'Folder name must be between 2 and 50 characters.' }, { status: 400 });
+      }
+      if (!/[a-zA-Z0-9]/.test(trimmedName)) {
+        return NextResponse.json({ success: false, message: 'Folder name cannot contain only special characters.' }, { status: 400 });
+      }
+      if (/^\d+$/.test(trimmedName.replace(/[\s_.\-&()'/]+/g, '')) || !/[a-zA-Z]/.test(trimmedName)) {
+        return NextResponse.json({ success: false, message: 'Folder name cannot be numeric-only and must contain letters.' }, { status: 400 });
+      }
+      if (!/^[a-zA-Z0-9\s_.\-&()'/]+$/.test(trimmedName)) {
+        return NextResponse.json({ success: false, message: 'Folder name contains invalid characters.' }, { status: 400 });
       }
       const companyId = this.getCompanyId(user);
       const folder = await this.projectService.createFolder({
         projectId,
         parentFolderId: body.parentFolderId || null,
-        name: body.name,
+        name: trimmedName,
         folderType: body.folderType || 'CUSTOM',
         createdBy: user?.name || user?.email || 'User'
       }, companyId);
@@ -277,10 +312,23 @@ export class ProjectController {
   async renameFolder(req: NextRequest, folderId: string, user: any) {
     try {
       const body = await req.json();
-      if (!body.name) {
+      if (!body.name || !body.name.trim()) {
         return NextResponse.json({ success: false, message: 'New folder name is required.' }, { status: 400 });
       }
-      const updated = await this.projectService.renameFolder(folderId, body.name);
+      const trimmedName = body.name.trim();
+      if (trimmedName.length < 2 || trimmedName.length > 50) {
+        return NextResponse.json({ success: false, message: 'Folder name must be between 2 and 50 characters.' }, { status: 400 });
+      }
+      if (!/[a-zA-Z0-9]/.test(trimmedName)) {
+        return NextResponse.json({ success: false, message: 'Folder name cannot contain only special characters.' }, { status: 400 });
+      }
+      if (/^\d+$/.test(trimmedName.replace(/[\s_.\-&()'/]+/g, '')) || !/[a-zA-Z]/.test(trimmedName)) {
+        return NextResponse.json({ success: false, message: 'Folder name cannot be numeric-only and must contain letters.' }, { status: 400 });
+      }
+      if (!/^[a-zA-Z0-9\s_.\-&()'/]+$/.test(trimmedName)) {
+        return NextResponse.json({ success: false, message: 'Folder name contains invalid characters.' }, { status: 400 });
+      }
+      const updated = await this.projectService.renameFolder(folderId, trimmedName);
       return NextResponse.json({ success: true, data: updated });
     } catch (err: any) {
       console.error('[ProjectController] renameFolder error:', err);

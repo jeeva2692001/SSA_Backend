@@ -246,15 +246,63 @@ export class RbacService {
     return rows.map((r) => r.role);
   }
 
+  private validateRoleTitle(roleName: string): string {
+    const trimmed = (roleName || '').trim();
+    if (!trimmed) {
+      throw new Error('Role Title is required.');
+    }
+    if (!/[a-zA-Z0-9]/.test(trimmed)) {
+      throw new Error('Role Title cannot contain only special characters.');
+    }
+    if (/^\d+$/.test(trimmed.replace(/[\s/.'&()_-]+/g, ''))) {
+      throw new Error('Role Title cannot contain only numeric characters.');
+    }
+    if (trimmed.length < 2) {
+      throw new Error('Role Title must be at least 2 characters.');
+    }
+    if (trimmed.length > 60) {
+      throw new Error('Role Title cannot exceed 60 characters.');
+    }
+    if (!/[a-zA-Z]/.test(trimmed)) {
+      throw new Error('Role Title must contain at least one letter.');
+    }
+    if (!/^[a-zA-Z0-9\s&/.,()'-]+$/.test(trimmed)) {
+      throw new Error('Role Title contains unsupported special characters.');
+    }
+    return trimmed;
+  }
+
+  private validateRoleDescription(description?: string): string {
+    const trimmed = (description || '').trim();
+    if (!trimmed) return '';
+    if (!/[a-zA-Z0-9]/.test(trimmed)) {
+      throw new Error('Role Description cannot contain only special characters.');
+    }
+    if (/^\d+$/.test(trimmed.replace(/[\s.,/-]+/g, ''))) {
+      throw new Error('Role Description cannot contain only numeric characters.');
+    }
+    if (trimmed.length < 3) {
+      throw new Error('Role Description must be at least 3 characters.');
+    }
+    if (trimmed.length > 250) {
+      throw new Error('Role Description cannot exceed 250 characters.');
+    }
+    if (!/[a-zA-Z]/.test(trimmed)) {
+      throw new Error('Role Description must contain at least one letter.');
+    }
+    if (!/^[a-zA-Z0-9\s&/.,():;'?!"–—-]+$/.test(trimmed)) {
+      throw new Error('Role Description contains unsupported special characters.');
+    }
+    return trimmed;
+  }
+
   async addRole(
     roleName: string,
     permissions?: Partial<PermissionsMap>,
     description?: string
   ): Promise<RolePermissionModel> {
-    const trimmed = (roleName || '').trim();
-    if (!trimmed) {
-      throw new Error('Role name is required.');
-    }
+    const trimmed = this.validateRoleTitle(roleName);
+    const trimmedDescription = this.validateRoleDescription(description);
 
     await this.ensureSeeded();
     const existing = await this.repository.findByRole(trimmed);
@@ -275,7 +323,7 @@ export class RbacService {
     return await this.repository.create({
       role: trimmed,
       isSystem: false,
-      description: description || `Custom user role: ${trimmed}`,
+      description: trimmedDescription || `Custom user role: ${trimmed}`,
       permissions: defaultPerms,
     });
   }

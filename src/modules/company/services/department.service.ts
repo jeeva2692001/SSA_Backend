@@ -50,6 +50,78 @@ export class DepartmentService {
     this.departmentRepository = new DepartmentRepository();
   }
 
+  private validateDepartmentName(name: string): string {
+    const trimmed = (name || '').trim();
+    if (!trimmed) throw new Error('Department name is required.');
+    if (!/[a-zA-Z0-9]/.test(trimmed)) {
+      throw new Error('Department name cannot contain only special characters.');
+    }
+    if (/^\d+$/.test(trimmed.replace(/\s+/g, ''))) {
+      throw new Error('Department name cannot contain only numeric characters.');
+    }
+    if (trimmed.length < 2) {
+      throw new Error('Department name must be at least 2 characters.');
+    }
+    if (trimmed.length > 100) {
+      throw new Error('Department name cannot exceed 100 characters.');
+    }
+    if (!/[a-zA-Z]/.test(trimmed)) {
+      throw new Error('Department name must contain at least one letter.');
+    }
+    if (!/^[a-zA-Z0-9\s&/.,()'-]+$/.test(trimmed)) {
+      throw new Error('Department name contains unsupported special characters.');
+    }
+    return trimmed;
+  }
+
+  private validateDepartmentHead(head?: string): string {
+    const trimmed = (head || '').trim();
+    if (!trimmed) return '';
+    if (!/[a-zA-Z0-9]/.test(trimmed)) {
+      throw new Error('Head of Department cannot contain only special characters.');
+    }
+    if (/^\d+$/.test(trimmed.replace(/[\s/.'-]+/g, ''))) {
+      throw new Error('Head of Department cannot contain only numeric characters.');
+    }
+    if (trimmed.length < 2) {
+      throw new Error('Head of Department must be at least 2 characters.');
+    }
+    if (trimmed.length > 100) {
+      throw new Error('Head of Department cannot exceed 100 characters.');
+    }
+    if (!/[a-zA-Z]/.test(trimmed)) {
+      throw new Error('Head of Department must contain valid alphabetic characters.');
+    }
+    if (!/^[a-zA-Z\s/.'-]+$/.test(trimmed)) {
+      throw new Error("Head of Department must contain only valid alphabetic characters (letters, spaces, /, ., ', -).");
+    }
+    return trimmed;
+  }
+
+  private validateDepartmentDescription(description?: string): string {
+    const trimmed = (description || '').trim();
+    if (!trimmed) return '';
+    if (!/[a-zA-Z0-9]/.test(trimmed)) {
+      throw new Error('Description cannot contain only special characters.');
+    }
+    if (/^\d+$/.test(trimmed.replace(/[\s.,/-]+/g, ''))) {
+      throw new Error('Description cannot contain only numeric characters.');
+    }
+    if (trimmed.length < 3) {
+      throw new Error('Description must be at least 3 characters.');
+    }
+    if (trimmed.length > 250) {
+      throw new Error('Description cannot exceed 250 characters.');
+    }
+    if (!/[a-zA-Z]/.test(trimmed)) {
+      throw new Error('Description must contain at least one letter.');
+    }
+    if (!/^[a-zA-Z0-9\s&/.,():;'?!"–—-]+$/.test(trimmed)) {
+      throw new Error('Description contains unsupported special characters.');
+    }
+    return trimmed;
+  }
+
   async ensureSeeded(): Promise<void> {
     const count = await this.departmentRepository.count();
     if (count === 0) {
@@ -109,11 +181,13 @@ export class DepartmentService {
   }
 
   async createDepartment(data: any, companyId: string = 'COM-001'): Promise<DepartmentModel> {
-    const trimmedName = (data.name || '').trim();
+    const trimmedName = this.validateDepartmentName(data.name);
     const trimmedCode = (data.code || '').trim().toUpperCase();
 
-    if (!trimmedName) throw new Error('Department name is required.');
     if (!trimmedCode) throw new Error('Department code is required.');
+
+    const trimmedHead = this.validateDepartmentHead(data.head);
+    const trimmedDescription = this.validateDepartmentDescription(data.description);
 
     await this.ensureSeeded();
 
@@ -133,8 +207,8 @@ export class DepartmentService {
       departmentId,
       name: trimmedName,
       code: trimmedCode,
-      head: (data.head || '').trim(),
-      description: (data.description || '').trim(),
+      head: trimmedHead,
+      description: trimmedDescription,
       status: data.status || 'Active',
       companyId: companyId || 'COM-001',
     });
@@ -150,8 +224,7 @@ export class DepartmentService {
     }
 
     if (data.name !== undefined) {
-      const trimmedName = data.name.trim();
-      if (!trimmedName) throw new Error('Department name cannot be empty.');
+      const trimmedName = this.validateDepartmentName(data.name);
       const existing = await this.departmentRepository.findByName(trimmedName, dept.companyId);
       if (existing && existing.departmentId !== dept.departmentId) {
         throw new Error(`Another department with name "${trimmedName}" already exists.`);
@@ -169,8 +242,8 @@ export class DepartmentService {
       dept.code = trimmedCode;
     }
 
-    if (data.head !== undefined) dept.head = data.head.trim();
-    if (data.description !== undefined) dept.description = data.description.trim();
+    if (data.head !== undefined) dept.head = this.validateDepartmentHead(data.head);
+    if (data.description !== undefined) dept.description = this.validateDepartmentDescription(data.description);
     if (data.status !== undefined) dept.status = data.status;
 
     return await this.departmentRepository.save(dept);

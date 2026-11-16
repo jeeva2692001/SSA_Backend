@@ -254,16 +254,93 @@ export class LeadService {
     return await this.leadRepository.deleteCategory(id);
   }
 
+  // ── Category Taglines & Template Field Validators ───────────────────────────
+  private validateTaglineName(name: string): string {
+    const cleanName = (name || '').trim().replace(/,/g, '');
+    if (!cleanName) {
+      throw new Error('Tagline name is required.');
+    }
+    if (!/[a-zA-Z0-9]/.test(cleanName)) {
+      throw new Error('Tagline cannot contain only special characters.');
+    }
+    if (/^\d+$/.test(cleanName.replace(/[\s/.'&()_-]+/g, ''))) {
+      throw new Error('Tagline cannot contain only numeric characters.');
+    }
+    if (cleanName.length < 2) {
+      throw new Error('Tagline name must be at least 2 characters.');
+    }
+    if (cleanName.length > 100) {
+      throw new Error('Tagline name cannot exceed 100 characters.');
+    }
+    if (!/[a-zA-Z]/.test(cleanName)) {
+      throw new Error('Tagline must contain at least one letter.');
+    }
+    if (!/^[a-zA-Z0-9\s&/.,()'-]+$/.test(cleanName)) {
+      throw new Error('Tagline contains unsupported special characters.');
+    }
+    return cleanName;
+  }
+
+  private validateTemplateFieldName(fieldName: string): string {
+    const trimmed = (fieldName || '').trim();
+    if (!trimmed) {
+      throw new Error('Question / Field Name is required.');
+    }
+    if (!/[a-zA-Z0-9]/.test(trimmed)) {
+      throw new Error('Question / Field Name cannot contain only special characters.');
+    }
+    if (/^\d+$/.test(trimmed.replace(/[\s/.'&()?-]+/g, ''))) {
+      throw new Error('Question / Field Name cannot contain only numeric characters.');
+    }
+    if (trimmed.length < 2) {
+      throw new Error('Question / Field Name must be at least 2 characters.');
+    }
+    if (trimmed.length > 120) {
+      throw new Error('Question / Field Name cannot exceed 120 characters.');
+    }
+    if (!/[a-zA-Z]/.test(trimmed)) {
+      throw new Error('Question / Field Name must contain at least one letter.');
+    }
+    if (!/^[a-zA-Z0-9\s&/.,():;'?!"–—+éè-]+$/.test(trimmed)) {
+      throw new Error('Question / Field Name contains unsupported special characters.');
+    }
+    return trimmed;
+  }
+
+  private validateTemplateSection(section: string): string {
+    const trimmed = (section || '').trim();
+    if (!trimmed) {
+      throw new Error('Section name is required.');
+    }
+    if (!/[a-zA-Z0-9]/.test(trimmed)) {
+      throw new Error('Section name cannot contain only special characters.');
+    }
+    if (/^\d+$/.test(trimmed.replace(/[\s/.'&()-]+/g, ''))) {
+      throw new Error('Section name cannot contain only numeric characters.');
+    }
+    if (trimmed.length < 2) {
+      throw new Error('Section name must be at least 2 characters.');
+    }
+    if (trimmed.length > 80) {
+      throw new Error('Section name cannot exceed 80 characters.');
+    }
+    if (!/[a-zA-Z]/.test(trimmed)) {
+      throw new Error('Section name must contain at least one letter.');
+    }
+    if (!/^[a-zA-Z0-9\s&/.,():;'–—+-]+$/.test(trimmed)) {
+      throw new Error('Section name contains unsupported special characters.');
+    }
+    return trimmed;
+  }
+
   // ── Category Taglines Management ───────────────────────────────────────────
   async getTaglines(categoryId?: number, categoryCode?: string) {
-    if (categoryId) {
-      return await this.leadRepository.findTaglinesByCategoryId(categoryId);
+    if (categoryId !== undefined) {
+      return await this.leadRepository.findTaglinesByCategoryId(Number(categoryId));
     }
-    if (categoryCode) {
+    if (categoryCode !== undefined) {
       const cat = await this.leadRepository.findCategoryByCode(categoryCode);
-      if (cat) {
-        return await this.leadRepository.findTaglinesByCategoryId(cat.id);
-      }
+      return cat ? await this.leadRepository.findTaglinesByCategoryId(cat.id) : [];
     }
     return await this.leadRepository.findAllTaglines();
   }
@@ -272,37 +349,30 @@ export class LeadService {
     if (userRole && !['Company', 'Super Admin', 'Super Administrator', 'Admin', 'Branch'].includes(userRole)) {
       throw new Error('Unauthorized: Insufficient permissions to create taglines.');
     }
-    if (!data.name || !data.name.trim()) {
-      throw new Error('Tagline name is required.');
+    const cleanName = this.validateTaglineName(data.name);
+    const categoryId = Number(data.categoryId);
+    if (!Number.isInteger(categoryId) || categoryId <= 0) {
+      throw new Error('Valid Category ID is required.');
     }
-    const cleanName = data.name.trim();
-    if (cleanName.length < 2) {
-      throw new Error('Tagline name must be at least 2 characters.');
-    }
-    if (cleanName.length > 100) {
-      throw new Error('Tagline name cannot exceed 100 characters.');
-    }
-    if (!data.categoryId) {
-      throw new Error('Category ID is required.');
-    }
-    const cat = await this.leadRepository.findCategoryById(data.categoryId);
+    const cat = await this.leadRepository.findCategoryById(categoryId);
     if (!cat) {
-      throw new Error(`Category with ID ${data.categoryId} not found.`);
+      throw new Error(`Category with ID ${categoryId} not found.`);
     }
 
     // Duplicate check within category
-    const existing = await this.leadRepository.findTaglinesByCategoryId(data.categoryId);
+    const existing = await this.leadRepository.findTaglinesByCategoryId(categoryId);
     if (existing.some(t => t.name.toLowerCase() === cleanName.toLowerCase())) {
       throw new Error(`Tagline "${cleanName}" already exists for category "${cat.name}".`);
     }
 
-    return await this.leadRepository.createTagline({
-      categoryId: data.categoryId,
+    const saved = await this.leadRepository.createTagline({
+      categoryId,
       name: cleanName,
       description: data.description?.trim(),
       displayOrder: data.displayOrder ?? (existing.length + 1),
       isActive: true
     });
+    return { ...saved, categoryId, category: saved.category ?? cat };
   }
 
   async updateTagline(id: number, data: { name?: string; categoryId?: number; description?: string; displayOrder?: number; isActive?: boolean }, userRole?: string) {
@@ -316,13 +386,7 @@ export class LeadService {
 
     const updates: any = {};
     if (data.name !== undefined) {
-      const cleanName = data.name.trim();
-      if (!cleanName || cleanName.length < 2) {
-        throw new Error('Tagline name must be at least 2 characters.');
-      }
-      if (cleanName.length > 100) {
-        throw new Error('Tagline name cannot exceed 100 characters.');
-      }
+      const cleanName = this.validateTaglineName(data.name);
       const targetCatId = data.categoryId || existing.categoryId;
       const allInCat = await this.leadRepository.findTaglinesByCategoryId(targetCatId);
       if (allInCat.some(t => t.id !== id && t.name.toLowerCase() === cleanName.toLowerCase())) {
@@ -384,7 +448,13 @@ export class LeadService {
     const targets = categoryId ? categories.filter(c => c.id === categoryId) : categories;
 
     for (const cat of targets) {
-      const defaults = DEFAULT_CATEGORY_TAGLINES[cat.code] || DEFAULT_CATEGORY_TAGLINES['RESIDENTIAL'] || [];
+      const defaults = DEFAULT_CATEGORY_TAGLINES[cat.code];
+      if (!defaults || defaults.length === 0) {
+        if (categoryId) {
+          throw new Error(`No preset default taglines are configured for custom category "${cat.name}".`);
+        }
+        continue;
+      }
       // Clean existing
       await this.leadRepository.deleteTaglinesByCategoryId(cat.id);
       // Create defaults
@@ -429,23 +499,35 @@ export class LeadService {
     if (!data.categoryId) {
       throw new Error('Category ID is required.');
     }
-    if (!data.fieldName || !data.fieldName.trim()) {
-      throw new Error('Question / Field Name is required.');
-    }
-    if (!data.section || !data.section.trim()) {
-      throw new Error('Section name is required.');
-    }
+    const cleanFieldName = this.validateTemplateFieldName(data.fieldName);
+    const cleanSection = this.validateTemplateSection(data.section);
 
     const category = await this.leadRepository.findCategoryById(data.categoryId);
     if (!category) {
       throw new Error(`Category with ID ${data.categoryId} not found.`);
     }
 
+    const existingFields = await this.leadRepository.findTemplateFieldsByCategoryId(data.categoryId);
+    const duplicateInSection = existingFields.some(
+      (f) =>
+        f.section.trim().toLowerCase() === cleanSection.toLowerCase() &&
+        f.fieldName.trim().toLowerCase() === cleanFieldName.toLowerCase()
+    );
+    if (duplicateInSection) {
+      throw new Error(`Question "${cleanFieldName}" already exists under the "${cleanSection}" section.`);
+    }
+
     // Auto-generate camelCase fieldKey if not explicitly specified
-    let fieldKey = data.fieldKey ? data.fieldKey.trim() : data.fieldName.replace(/[^a-zA-Z0-9]/g, ' ').split(' ').map((word, index) => index === 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join('');
+    let fieldKey = data.fieldKey
+      ? data.fieldKey.trim()
+      : cleanFieldName
+          .replace(/[^a-zA-Z0-9]/g, ' ')
+          .split(' ')
+          .filter(Boolean)
+          .map((word, index) => (index === 0 ? word.toLowerCase() : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))
+          .join('');
     if (!fieldKey) fieldKey = `custom_${Date.now()}`;
 
-    const existingFields = await this.leadRepository.findTemplateFieldsByCategoryId(data.categoryId);
     if (existingFields.some(f => f.fieldKey === fieldKey)) {
       fieldKey = `${fieldKey}_${Date.now().toString().slice(-4)}`;
     }
@@ -453,10 +535,10 @@ export class LeadService {
     return await this.leadRepository.createTemplateField({
       categoryId: data.categoryId,
       fieldKey,
-      fieldName: data.fieldName.trim(),
+      fieldName: cleanFieldName,
       fieldType: data.fieldType || 'text',
       fieldOptions: data.fieldOptions || [],
-      section: data.section.trim(),
+      section: cleanSection,
       capturedAtStage: data.capturedAtStage || 'Requirement Collection',
       isRequired: !!data.isRequired,
       displayOrder: data.displayOrder ?? (existingFields.length + 1)
@@ -479,7 +561,34 @@ export class LeadService {
     if (userRole !== 'Company' && userRole !== 'Super Admin' && userRole !== 'Super Administrator' && userRole !== 'Admin') {
       throw new Error('Unauthorized: Only Company Admin or Super Admin can edit lead questions.');
     }
-    return await this.leadRepository.updateTemplateField(id, data);
+    const existingField = await this.leadRepository.findTemplateFieldById(id);
+    if (!existingField) {
+      throw new Error(`Template field with ID ${id} not found.`);
+    }
+
+    const cleanFieldName = data.fieldName !== undefined
+      ? this.validateTemplateFieldName(data.fieldName)
+      : existingField.fieldName;
+    const cleanSection = data.section !== undefined
+      ? this.validateTemplateSection(data.section)
+      : existingField.section;
+
+    const existingFields = await this.leadRepository.findTemplateFieldsByCategoryId(existingField.categoryId);
+    const duplicateInSection = existingFields.some(
+      (f) =>
+        f.id !== id &&
+        f.section.trim().toLowerCase() === cleanSection.toLowerCase() &&
+        f.fieldName.trim().toLowerCase() === cleanFieldName.toLowerCase()
+    );
+    if (duplicateInSection) {
+      throw new Error(`Question "${cleanFieldName}" already exists under the "${cleanSection}" section.`);
+    }
+
+    return await this.leadRepository.updateTemplateField(id, {
+      ...data,
+      fieldName: cleanFieldName,
+      section: cleanSection
+    });
   }
 
   async deleteTemplateField(id: number, userRole: string) {
@@ -489,12 +598,261 @@ export class LeadService {
     return await this.leadRepository.deleteTemplateField(id);
   }
 
+  private validateLeadTextWithLetters(
+    value: string,
+    label: string,
+    minLen: number,
+    maxLen: number,
+    allowedRegex: RegExp,
+    numericStripRegex: RegExp
+  ): void {
+    const trimmed = value.trim();
+    if (!/[a-zA-Z0-9]/.test(trimmed)) {
+      throw new Error(`${label} cannot contain only special characters.`);
+    }
+    if (/^\d+$/.test(trimmed.replace(numericStripRegex, ''))) {
+      throw new Error(`${label} cannot contain only numeric characters.`);
+    }
+    if (trimmed.length < minLen) {
+      throw new Error(`${label} must be at least ${minLen} characters.`);
+    }
+    if (trimmed.length > maxLen) {
+      throw new Error(`${label} cannot exceed ${maxLen} characters.`);
+    }
+    if (!/[a-zA-Z]/.test(trimmed)) {
+      throw new Error(`${label} must contain valid alphabetic text.`);
+    }
+    if (!allowedRegex.test(trimmed)) {
+      throw new Error(`${label} contains unsupported special characters.`);
+    }
+  }
+
+  private validateLeadCoreFields(leadData: Partial<LeadModel>, isDraft: boolean, isUpdate: boolean): void {
+    if (leadData.clientName !== undefined && !leadData.clientName.trim()) {
+      throw new Error('Client Name is required.');
+    }
+
+    if (!isDraft) {
+      const effectiveTitle = leadData.leadTitle !== undefined ? leadData.leadTitle : (!isUpdate ? leadData.projectName : undefined);
+      if (effectiveTitle !== undefined && !effectiveTitle.trim()) {
+        throw new Error('Lead Title is required.');
+      }
+      if (!isUpdate && leadData.leadTitle === undefined && !leadData.projectName?.trim()) {
+        throw new Error('Lead Title is required.');
+      }
+      if (leadData.mobile !== undefined && !leadData.mobile.trim()) {
+        throw new Error('Mobile number is required.');
+      }
+      if (leadData.email !== undefined && !leadData.email.trim()) {
+        throw new Error('Email is required.');
+      }
+    }
+
+    if (leadData.leadTitle !== undefined) {
+      const titleTrim = (leadData.leadTitle || '').trim();
+      if (!titleTrim) {
+        if (!isDraft) throw new Error('Lead Title is required.');
+      } else {
+        this.validateLeadTextWithLetters(
+          titleTrim,
+          'Lead Title',
+          2,
+          150,
+          /^[a-zA-Z0-9\s.'&()/_,-]+$/,
+          /[\s.'&()/_,-]+/g
+        );
+      }
+    } else if (!isUpdate && !isDraft && leadData.projectName && leadData.projectName.trim()) {
+      this.validateLeadTextWithLetters(
+        leadData.projectName,
+        'Lead Title',
+        2,
+        150,
+        /^[a-zA-Z0-9\s.'&()/_,-]+$/,
+        /[\s.'&()/_,-]+/g
+      );
+    }
+
+    const companyVal = leadData.company !== undefined ? leadData.company : leadData.organisation;
+    if (companyVal && companyVal.trim()) {
+      this.validateLeadTextWithLetters(
+        companyVal,
+        'Company / Organization',
+        2,
+        100,
+        /^[a-zA-Z0-9\s.'&()/_,-]+$/,
+        /[\s.'&()/_,-]+/g
+      );
+    }
+
+    if (leadData.contactPerson !== undefined && leadData.contactPerson !== null) {
+      const cp = leadData.contactPerson.trim();
+      if (cp.length > 0) {
+        if (cp.length < 2 || cp.length > 100) {
+          throw new Error('Contact person name must be between 2 and 100 characters.');
+        }
+        if (/\d/.test(cp)) {
+          throw new Error('Contact person name cannot contain numbers.');
+        }
+        if (!/[a-zA-Z]/.test(cp)) {
+          throw new Error('Contact person name must contain letters and cannot be only numeric or special characters.');
+        }
+        if (!/^[a-zA-Z\s.'-]+$/.test(cp)) {
+          throw new Error('Contact person name should contain only letters, dots, hyphens, and apostrophes.');
+        }
+      }
+    }
+
+    if (leadData.decisionMakers && leadData.decisionMakers.trim()) {
+      this.validateLeadTextWithLetters(
+        leadData.decisionMakers,
+        'Decision Makers',
+        2,
+        100,
+        /^[a-zA-Z0-9\s,.'&()/-]+$/,
+        /[\s,.'&()/-]+/g
+      );
+    }
+
+    if (leadData.adjacentDevelopments && leadData.adjacentDevelopments.trim()) {
+      this.validateLeadTextWithLetters(
+        leadData.adjacentDevelopments,
+        'Adjacent Developments',
+        2,
+        200,
+        /^[a-zA-Z0-9\s,.'&()/_–—-]+$/,
+        /[\s,.'&()/_–—-]+/g
+      );
+    }
+
+    const addressVal = leadData.siteAddress !== undefined ? leadData.siteAddress : leadData.locationAddress;
+    if (addressVal && addressVal.trim()) {
+      this.validateLeadTextWithLetters(
+        addressVal,
+        'Site Address',
+        5,
+        300,
+        /^[a-zA-Z0-9\s,./#()'&_–—-]+$/,
+        /[\s,./#()'&_–—-]+/g
+      );
+    }
+  }
+
+  private normalizeLeadSiteAndRegulatoryFields(leadData: Partial<LeadModel>): void {
+    const siteDetailFields: Array<{ key: keyof LeadModel; label: string }> = [
+      { key: 'siteAddress', label: 'Site Address' },
+      { key: 'locationAddress', label: 'Site Address' },
+      { key: 'city', label: 'City' },
+      { key: 'state', label: 'State' },
+      { key: 'country', label: 'Country' },
+      { key: 'surveyNumber', label: 'Survey Number' },
+      { key: 'topographyLevels', label: 'Topography / Levels' },
+      { key: 'accessRoadWidth', label: 'Access Road Width' },
+      { key: 'orientation', label: 'Orientation' },
+      { key: 'adjacentDevelopments', label: 'Adjacent Developments' },
+    ];
+
+    for (const { key, label } of siteDetailFields) {
+      const val = leadData[key];
+      if (typeof val === 'string') {
+        if (val.length > 0 && !val.trim()) {
+          throw new Error(`${label} cannot contain only spaces.`);
+        }
+        (leadData as any)[key] = val.trim();
+      }
+    }
+
+    const trimOnlyFields: Array<keyof LeadModel> = [
+      'approvingAuthority',
+      'landUseZoning',
+      'fsiCoverageKnown',
+      'setbacksHeightRestrictions',
+      'priorApprovalsViolations',
+      'specialRestrictions',
+      'leadTitle',
+      'projectName',
+      'clientName',
+      'company',
+      'organisation',
+      'contactPerson',
+      'decisionMakers',
+      'mobile',
+      'email',
+      'ebSupplySanctionedLoad',
+      'telecom',
+      'preferredVendors',
+      'siteVisitFrequencyExpectation',
+      'reportingExpectations',
+      'styleReferencesInspiration',
+      'sustainabilityGoals',
+      'vaastuOrientationRequirements',
+      'materialPreferences',
+      'remarks',
+    ];
+
+    for (const key of trimOnlyFields) {
+      const val = leadData[key];
+      if (typeof val === 'string') {
+        (leadData as any)[key] = val.trim();
+      }
+    }
+  }
+
+  private async validateDuplicateLeadClientDetails(
+    leadData: Partial<LeadModel>,
+    scopedCompanyId: string,
+    excludeLeadId?: number
+  ): Promise<void> {
+    const repoAny = this.leadRepository as any;
+    if (typeof repoAny.findDuplicateLeadByClientDetails !== 'function') {
+      return;
+    }
+
+    const dup = await repoAny.findDuplicateLeadByClientDetails(
+      scopedCompanyId,
+      leadData.clientName,
+      leadData.mobile,
+      leadData.email,
+      excludeLeadId
+    );
+    if (!dup) return;
+
+    if (dup.matchedBy === 'all') {
+      throw new Error('Duplicate lead detected: a lead already exists with the same client name, mobile number, and email address.');
+    }
+    throw new Error('Duplicate lead detected: a lead already exists with the same client name and mobile number.');
+  }
+
+  private async validateUniqueLeadEmail(
+    email: string | undefined,
+    scopedCompanyId: string,
+    linkedClientId?: string | null,
+    excludeLeadId?: number
+  ): Promise<void> {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    if (!cleanEmail) return;
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      throw new Error('Please enter a valid email address.');
+    }
+
+    const existingLead = await this.leadRepository.findLeadByEmail(cleanEmail, scopedCompanyId, excludeLeadId);
+    if (existingLead) {
+      throw new Error('This email address is already in use by an existing lead.');
+    }
+
+    const existingClient = await this.clientRepository.findByEmail(cleanEmail, scopedCompanyId);
+    if (existingClient && String(existingClient.id) !== String(linkedClientId || '')) {
+      throw new Error('This email address is already in use by an existing client.');
+    }
+  }
+
   async createLead(
     leadData: Partial<LeadModel>, 
     requirementValues: Record<string, any>,
     userContext: { companyId: string; branchId: string | null; role: string; userId: string }
   ): Promise<any> {
-    if (!leadData.clientName) {
+    if (!leadData.clientName || !leadData.clientName.trim()) {
       throw new Error('Client Name is required.');
     }
     if (!leadData.categoryId) {
@@ -509,6 +867,17 @@ export class LeadService {
       // If admin/employee/company, allow custom payload scoping
       scopedCompanyId = leadData.companyId || userContext.companyId;
       scopedBranchId = leadData.branchId !== undefined ? leadData.branchId : userContext.branchId;
+    }
+
+    const isDraft = leadData.status === 'Draft';
+    this.normalizeLeadSiteAndRegulatoryFields(leadData);
+    this.validateLeadCoreFields(leadData, isDraft, false);
+    if (!isDraft) {
+      await this.validateDuplicateLeadClientDetails(leadData, scopedCompanyId);
+    }
+    if (leadData.email !== undefined) {
+      await this.validateUniqueLeadEmail(leadData.email, scopedCompanyId, leadData.clientId);
+      leadData.email = leadData.email.trim();
     }
 
     const category = await this.leadRepository.findCategoryById(leadData.categoryId);
@@ -876,8 +1245,14 @@ export class LeadService {
       if (!/[a-zA-Z0-9]/.test(remTrim)) {
         throw new Error('Internal remarks cannot be only special characters.');
       }
-      if (/^\d+$/.test(remTrim)) {
+      if (/^\d+$/.test(remTrim.replace(/[\s,.'&()/#:;!?"'–—+@%*-]+/g, '')) || /^\d+$/.test(remTrim)) {
         throw new Error('Internal remarks cannot be only numbers.');
+      }
+      if (!/[a-zA-Z]/.test(remTrim)) {
+        throw new Error('Internal remarks must contain alphabetic text.');
+      }
+      if (!/^[a-zA-Z0-9\s,.'&()/#:;!?"'–—+@%*_-]+$/.test(remTrim)) {
+        throw new Error('Internal remarks contains unsupported special characters.');
       }
     }
 
@@ -1008,6 +1383,26 @@ export class LeadService {
     // Disallow converting a Draft lead directly to Won / Converted
     if (lead.status === 'Draft' && (leadData.status === 'Converted' || leadData.status === 'Won')) {
       throw new Error('Draft leads cannot be converted to an active project. Please complete and submit the lead details first.');
+    }
+
+    const isDraft = (leadData.status ?? lead.status) === 'Draft';
+    this.normalizeLeadSiteAndRegulatoryFields(leadData);
+    this.validateLeadCoreFields(leadData, isDraft, true);
+    if (!isDraft && (leadData.clientName !== undefined || leadData.mobile !== undefined || leadData.email !== undefined)) {
+      await this.validateDuplicateLeadClientDetails(
+        {
+          clientName: leadData.clientName ?? lead.clientName,
+          mobile: leadData.mobile ?? lead.mobile,
+          email: leadData.email ?? lead.email,
+        },
+        lead.companyId,
+        id
+      );
+    }
+    if (leadData.email !== undefined) {
+      const targetClientId = leadData.clientId !== undefined ? leadData.clientId : lead.clientId;
+      await this.validateUniqueLeadEmail(leadData.email, lead.companyId, targetClientId, id);
+      leadData.email = leadData.email.trim();
     }
 
     // Validate city and state if provided
@@ -1326,8 +1721,14 @@ export class LeadService {
       if (!/[a-zA-Z0-9]/.test(remTrim)) {
         throw new Error('Internal remarks cannot be only special characters.');
       }
-      if (/^\d+$/.test(remTrim)) {
+      if (/^\d+$/.test(remTrim.replace(/[\s,.'&()/#:;!?"'–—+@%*-]+/g, '')) || /^\d+$/.test(remTrim)) {
         throw new Error('Internal remarks cannot be only numbers.');
+      }
+      if (!/[a-zA-Z]/.test(remTrim)) {
+        throw new Error('Internal remarks must contain alphabetic text.');
+      }
+      if (!/^[a-zA-Z0-9\s,.'&()/#:;!?"'–—+@%*_-]+$/.test(remTrim)) {
+        throw new Error('Internal remarks contains unsupported special characters.');
       }
     }
 

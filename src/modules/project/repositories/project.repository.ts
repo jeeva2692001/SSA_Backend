@@ -9,7 +9,8 @@ import {
   DrawingRevisionModel,
   DrawingFileModel,
   FolderModel,
-  ProjectFileModel
+  ProjectFileModel,
+  MilestoneModel
 } from '../models';
 
 export class ProjectRepository {
@@ -201,7 +202,17 @@ export class ProjectRepository {
       console.warn('[ProjectRepository] deleteProject projectDisciplineRepo note:', e);
     }
 
-    // 5. Project record itself
+    try {
+      // 5. Milestones
+      await AppDataSource.getRepository(MilestoneModel).createQueryBuilder()
+        .delete()
+        .where('projectId = :id OR projectCode = :id', { id })
+        .execute();
+    } catch (e) {
+      console.warn('[ProjectRepository] deleteProject milestone note:', e);
+    }
+
+    // 6. Project record itself
     await this.projectRepo().createQueryBuilder()
       .delete()
       .where('id = :id', { id })
@@ -317,11 +328,22 @@ export class ProjectRepository {
   }
 
   async findDrawingById(id: string): Promise<DrawingModel | null> {
-    return await this.drawingRepo().findOne({ where: { id } });
+    if (!id || typeof id !== 'string') return null;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id.trim());
+    if (!isUuid) return null;
+    return await this.drawingRepo().findOne({ where: { id: id.trim() } });
   }
 
   async findDrawingByCode(drawingCode: string): Promise<DrawingModel | null> {
-    return await this.drawingRepo().findOne({ where: { drawingCode } });
+    if (!drawingCode || typeof drawingCode !== 'string') return null;
+    const cleanCode = drawingCode.trim();
+    const found = await this.drawingRepo().findOne({ where: { drawingCode: cleanCode } });
+    if (found) return found;
+    // Case-insensitive fallback
+    return await this.drawingRepo()
+      .createQueryBuilder('drawing')
+      .where('LOWER(drawing.drawingCode) = LOWER(:code)', { code: cleanCode })
+      .getOne();
   }
 
   async updateDrawing(id: string, updates: Partial<DrawingModel>): Promise<DrawingModel> {

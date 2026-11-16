@@ -13,6 +13,26 @@ import { RbacService } from '../../rbac/services/rbac.service';
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-jwt-key-for-architect-erp';
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '1d';
 
+export interface ProfileVerificationChallenge {
+  verificationRequired: true;
+  requiresEmailVerification: boolean;
+  requiresPhoneVerification: boolean;
+  maskedEmail: string | null;
+  maskedPhone: string | null;
+  emailSimulated: boolean;
+  phoneSimulated: boolean;
+}
+
+export class ProfileVerificationRequiredError extends Error {
+  public readonly challenge: ProfileVerificationChallenge;
+
+  constructor(message: string, challenge: ProfileVerificationChallenge) {
+    super(message);
+    this.name = 'ProfileVerificationRequiredError';
+    this.challenge = challenge;
+  }
+}
+
 export class AuthService {
   private userRepository: UserRepository;
   private companyRepository: CompanyRepository;
@@ -199,6 +219,8 @@ export class AuthService {
         userId: user.userId,
         name: user.name,
         email: user.email,
+        phone: user.phone || '',
+        mobileNumber: user.phone || '',
         role: user.role,
         avatar: user.avatar,
         companyId: employee?.companyId,
@@ -758,39 +780,270 @@ export class AuthService {
     return await branchRepo.findOne({ where: { branchId: String(id) } });
   }
 
-  async updateProfile(currentUser: any, profileData: { name?: string; email?: string; contactPerson?: string; phone?: string; mobileNumber?: string }): Promise<any> {
-    const { name, email, phone, mobileNumber } = profileData;
-
+  private async resolveProfileAccount(currentUser: any): Promise<
+    | { kind: 'company'; company: CompanyModel; userKey: string; displayName: string; currentEmail: string; currentPhone: string }
+    | { kind: 'branch'; branch: BranchModel; userKey: string; displayName: string; currentEmail: string; currentPhone: string }
+    | { kind: 'user'; user: UserModel; userKey: string; displayName: string; currentEmail: string; currentPhone: string }
+  > {
     if (currentUser.role === 'Company') {
       const companyId = currentUser.companyId || currentUser.id;
       let company = await this.companyRepository.findByCompanyId(companyId);
-      if (!company) {
+      if (!company && !isNaN(Number(companyId))) {
         company = await this.companyRepository.findById(Number(companyId));
       }
       if (!company) {
         throw new Error('Company account not found.');
       }
+      return {
+        kind: 'company',
+        company,
+        userKey: `company:${company.companyId}`,
+        displayName: company.contactPerson || company.name || 'Company Admin',
+        currentEmail: (company.email || '').trim().toLowerCase(),
+        currentPhone: (company.phone || company.mobileNumber || '').trim(),
+      };
+    }
 
+    if (currentUser.role === 'Branch') {
+      const dataSource = await getDataSource();
+      const branchRepo = dataSource.getRepository(BranchModel);
+      const branchId = currentUser.branchId || currentUser.id;
+      let branch = await branchRepo.findOne({ where: [{ branchId }, { code: branchId }] });
+      if (!branch && !isNaN(Number(branchId))) {
+        branch = await branchRepo.findOne({ where: { id: Number(branchId) } });
+      }
+      if (!branch) {
+        throw new Error('Branch account not found.');
+      }
+      return {
+        kind: 'branch',
+        branch,
+        userKey: `branch:${branch.branchId}`,
+        displayName: branch.manager || branch.name || 'Branch Manager',
+        currentEmail: '',
+        currentPhone: (branch.phone || '').trim(),
+      };
+    }
+
+    let user = await this.userRepository.findById(Number(currentUser.id));
+    if (!user && currentUser.userId) {
+      user = await this.userRepository.findByUserId(currentUser.userId);
+    }
+    if (!user && currentUser.email) {
+      user = await this.userRepository.findByEmail(currentUser.email);
+    }
+    if (!user && (currentUser.companyId || currentUser.role === 'Admin')) {
+      const targetCompId = currentUser.companyId || currentUser.id;
+      let comp = await this.companyRepository.findByCompanyId(targetCompId);
+      if (!comp && !isNaN(Number(targetCompId))) {
+        comp = await this.companyRepository.findById(Number(targetCompId));
+      }
+      if (comp) {
+        return {
+          kind: 'company',
+          company: comp,
+          userKey: `company:${comp.companyId}`,
+          displayName: comp.contactPerson || comp.name || 'Company Admin',
+          currentEmail: (comp.email || '').trim().toLowerCase(),
+          currentPhone: (comp.phone || comp.mobileNumber || '').trim(),
+        };
+      }
+    }
+    if (!user) {
+      throw new Error('User not found.');
+    }
+
+    return {
+      kind: 'user',
+      user,
+      userKey: `user:${user.id}`,
+      displayName: user.name || user.userId || 'User',
+      currentEmail: (user.email || '').trim().toLowerCase(),
+      currentPhone: (user.phone || '').trim(),
+    };
+  }
+
+  private async validateChangedContactDetails(
+    account: Awaited<ReturnType<AuthService['resolveProfileAccount']>>,
+    nextEmail: string,
+    nextPhone: string,
+    emailChanged: boolean,
+    phoneChanged: boolean
+  ): Promise<void> {
+    if (emailChanged) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(nextEmail)) {
+        throw new Error('Please enter a valid email address.');
+      }
+      if (account.kind === 'company') {
+        const existing = await this.companyRepository.findByEmail(nextEmail);
+        if (existing && existing.companyId !== account.company.companyId) {
+          throw new Error('Email is already registered by another account.');
+        }
+      } else if (account.kind === 'user') {
+        const existing = await this.userRepository.findByEmail(nextEmail);
+        if (existing && existing.id !== account.user.id) {
+          throw new Error('Email is already registered by another account.');
+        }
+      }
+    }
+
+    if (phoneChanged) {
+      const digitsOnly = nextPhone.replace(/\D/g, '');
+      if (digitsOnly.length < 7 || digitsOnly.length > 15) {
+        throw new Error('Phone number must contain between 7 and 15 digits.');
+      }
+    }
+  }
+
+  async requestProfileContactVerification(
+    currentUser: any,
+    profileData: { email?: string; phone?: string; mobileNumber?: string }
+  ): Promise<ProfileVerificationChallenge & { message: string }> {
+    const account = await this.resolveProfileAccount(currentUser);
+    const nextEmail = profileData.email !== undefined ? profileData.email.trim().toLowerCase() : account.currentEmail;
+    const rawNextPhone = profileData.mobileNumber !== undefined || profileData.phone !== undefined
+      ? (profileData.mobileNumber ?? profileData.phone ?? '').trim()
+      : account.currentPhone;
+
+    if (account.kind !== 'branch' && profileData.email !== undefined && !nextEmail) {
+      throw new Error('Email address is required.');
+    }
+
+    const emailChanged = account.kind !== 'branch' && !!nextEmail && nextEmail !== account.currentEmail;
+    const phoneChanged = !!rawNextPhone && rawNextPhone !== account.currentPhone;
+
+    await this.validateChangedContactDetails(account, nextEmail, rawNextPhone, emailChanged, phoneChanged);
+
+    if (!emailChanged && !phoneChanged) {
+      return {
+        verificationRequired: true,
+        requiresEmailVerification: false,
+        requiresPhoneVerification: false,
+        maskedEmail: null,
+        maskedPhone: null,
+        emailSimulated: false,
+        phoneSimulated: false,
+        message: 'No email or mobile number changes detected.',
+      };
+    }
+
+    const { otpService } = await import('./otp.service');
+    let maskedEmail: string | null = null;
+    let maskedPhone: string | null = null;
+    let emailSimulated = false;
+    let phoneSimulated = false;
+
+    if (emailChanged) {
+      const res = await otpService.createContactVerificationOtp({
+        userKey: account.userKey,
+        channel: 'email',
+        target: nextEmail,
+        userName: account.displayName,
+      });
+      maskedEmail = res.maskedTarget;
+      emailSimulated = res.simulated;
+    }
+
+    if (phoneChanged) {
+      const res = await otpService.createContactVerificationOtp({
+        userKey: account.userKey,
+        channel: 'phone',
+        target: rawNextPhone,
+        userName: account.displayName,
+      });
+      maskedPhone = res.maskedTarget;
+      phoneSimulated = res.simulated;
+    }
+
+    return {
+      verificationRequired: true,
+      requiresEmailVerification: emailChanged,
+      requiresPhoneVerification: phoneChanged,
+      maskedEmail,
+      maskedPhone,
+      emailSimulated,
+      phoneSimulated,
+      message: 'Verification OTP sent to your updated contact details.',
+    };
+  }
+
+  async updateProfile(
+    currentUser: any,
+    profileData: {
+      name?: string;
+      email?: string;
+      contactPerson?: string;
+      phone?: string;
+      mobileNumber?: string;
+      emailOtp?: string;
+      phoneOtp?: string;
+    }
+  ): Promise<any> {
+    const { name, email, phone, mobileNumber, emailOtp, phoneOtp } = profileData;
+    const account = await this.resolveProfileAccount(currentUser);
+
+    const nextEmail = email !== undefined ? email.trim().toLowerCase() : account.currentEmail;
+    const nextPhone = mobileNumber !== undefined || phone !== undefined
+      ? (mobileNumber ?? phone ?? '').trim()
+      : account.currentPhone;
+
+    if (account.kind !== 'branch' && email !== undefined && !nextEmail) {
+      throw new Error('Email address is required.');
+    }
+
+    const emailChanged = account.kind !== 'branch' && !!nextEmail && nextEmail !== account.currentEmail;
+    const phoneChanged = !!nextPhone && nextPhone !== account.currentPhone;
+
+    await this.validateChangedContactDetails(account, nextEmail, nextPhone, emailChanged, phoneChanged);
+
+    if (emailChanged || phoneChanged) {
+      const missingEmailOtp = emailChanged && !(emailOtp || '').trim();
+      const missingPhoneOtp = phoneChanged && !(phoneOtp || '').trim();
+
+      if (missingEmailOtp || missingPhoneOtp) {
+        const challenge = await this.requestProfileContactVerification(currentUser, profileData);
+        throw new ProfileVerificationRequiredError(
+          'Please verify your updated email address or mobile number via OTP before saving.',
+          challenge
+        );
+      }
+
+      const { otpService } = await import('./otp.service');
+      if (emailChanged) {
+        const emailCheck = otpService.verifyContactOtp(account.userKey, 'email', nextEmail, emailOtp!);
+        if (!emailCheck.valid) {
+          throw new Error(emailCheck.message || 'Invalid email verification OTP.');
+        }
+      }
+      if (phoneChanged) {
+        const phoneCheck = otpService.verifyContactOtp(account.userKey, 'phone', nextPhone, phoneOtp!);
+        if (!phoneCheck.valid) {
+          throw new Error(phoneCheck.message || 'Invalid mobile verification OTP.');
+        }
+      }
+
+      if (emailChanged) otpService.consumeContactOtp(account.userKey, 'email');
+      if (phoneChanged) otpService.consumeContactOtp(account.userKey, 'phone');
+    }
+
+    if (account.kind === 'company') {
+      const { company } = account;
       if (name && name.trim()) {
         company.contactPerson = name.trim();
       }
       if (profileData.contactPerson && profileData.contactPerson.trim()) {
         company.contactPerson = profileData.contactPerson.trim();
       }
-      if (email && email.trim()) {
-        const existing = await this.companyRepository.findByEmail(email.trim().toLowerCase());
-        if (existing && existing.companyId !== company.companyId) {
-          throw new Error('Email is already registered by another account.');
-        }
-        company.email = email.trim().toLowerCase();
+      if (emailChanged) {
+        company.email = nextEmail;
       }
-      if (mobileNumber || phone) {
-        company.mobileNumber = (mobileNumber || phone || '').trim();
-        company.phone = company.mobileNumber;
+      if (mobileNumber !== undefined || phone !== undefined) {
+        company.mobileNumber = nextPhone;
+        company.phone = nextPhone;
       }
 
       const updated = await this.companyRepository.createCompany(company);
-      const permissions = await this.rbacService.getUserPermissions('Company');
+      const permissions = await this.rbacService.getUserPermissions(currentUser.role || 'Company');
 
       return {
         id: updated.companyId,
@@ -798,7 +1051,7 @@ export class AuthService {
         companyId: updated.companyId,
         name: updated.name,
         email: updated.email,
-        role: 'Company',
+        role: currentUser.role || 'Company',
         contactPerson: updated.contactPerson,
         status: updated.status,
         currency: updated.currency || 'INR',
@@ -817,20 +1070,16 @@ export class AuthService {
       };
     }
 
-    if (currentUser.role === 'Branch') {
+    if (account.kind === 'branch') {
       const dataSource = await getDataSource();
       const branchRepo = dataSource.getRepository(BranchModel);
-      const branchId = currentUser.branchId || currentUser.id;
-      let branch = await branchRepo.findOne({ where: [{ branchId }, { code: branchId }] });
-      if (!branch && !isNaN(Number(branchId))) {
-        branch = await branchRepo.findOne({ where: { id: Number(branchId) } });
-      }
-      if (!branch) {
-        throw new Error('Branch account not found.');
-      }
+      const { branch } = account;
 
       if (name && name.trim()) {
         branch.manager = name.trim();
+      }
+      if (mobileNumber !== undefined || phone !== undefined) {
+        branch.phone = nextPhone;
       }
       const updated = await branchRepo.save(branch);
       const permissions = await this.rbacService.getUserPermissions('Branch');
@@ -842,6 +1091,8 @@ export class AuthService {
         role: 'Branch',
         code: updated.code,
         manager: updated.manager,
+        phone: updated.phone || '',
+        mobileNumber: updated.phone || '',
         status: updated.status,
         companyId: updated.companyId,
         mustChangePassword: false,
@@ -849,56 +1100,15 @@ export class AuthService {
       };
     }
 
-    // Standard User / Employee / Super Admin
-    let user = await this.userRepository.findById(Number(currentUser.id));
-    if (!user && currentUser.userId) {
-      user = await this.userRepository.findByUserId(currentUser.userId);
-    }
-    if (!user && currentUser.email) {
-      user = await this.userRepository.findByEmail(currentUser.email);
-    }
-    if (!user && (currentUser.companyId || currentUser.role === 'Admin')) {
-      const targetCompId = currentUser.companyId || currentUser.id;
-      let comp = await this.companyRepository.findByCompanyId(targetCompId);
-      if (!comp && !isNaN(Number(targetCompId))) {
-        comp = await this.companyRepository.findById(Number(targetCompId));
-      }
-      if (comp) {
-        if (name && name.trim()) comp.contactPerson = name.trim();
-        if (email && email.trim()) comp.email = email.trim().toLowerCase();
-        if (mobileNumber || phone) {
-          comp.mobileNumber = (mobileNumber || phone || '').trim();
-          comp.phone = comp.mobileNumber;
-        }
-        const updatedComp = await this.companyRepository.createCompany(comp);
-        const permissions = await this.rbacService.getUserPermissions(currentUser.role || 'Company');
-        return {
-          id: updatedComp.companyId,
-          userId: updatedComp.companyId,
-          companyId: updatedComp.companyId,
-          name: updatedComp.name,
-          email: updatedComp.email,
-          role: currentUser.role || 'Company',
-          contactPerson: updatedComp.contactPerson,
-          status: updatedComp.status,
-          mustChangePassword: false,
-          permissions,
-        };
-      }
-    }
-    if (!user) {
-      throw new Error('User not found.');
-    }
-
+    const { user } = account;
     if (name && name.trim()) {
       user.name = name.trim();
     }
-    if (email && email.trim()) {
-      const existing = await this.userRepository.findByEmail(email.trim().toLowerCase());
-      if (existing && existing.id !== user.id) {
-        throw new Error('Email is already registered by another account.');
-      }
-      user.email = email.trim().toLowerCase();
+    if (emailChanged) {
+      user.email = nextEmail;
+    }
+    if (mobileNumber !== undefined || phone !== undefined) {
+      user.phone = nextPhone;
     }
 
     const updated = await this.userRepository.createUser(user);
@@ -916,7 +1126,8 @@ export class AuthService {
       });
       if (employee) {
         if (name && name.trim()) employee.name = name.trim();
-        if (email && email.trim()) employee.email = email.trim().toLowerCase();
+        if (emailChanged) employee.email = nextEmail;
+        if (phoneChanged) employee.phone = nextPhone;
         await empRepo.save(employee);
       }
     } catch {
@@ -930,6 +1141,8 @@ export class AuthService {
       userId: updated.userId,
       name: updated.name,
       email: updated.email,
+      phone: updated.phone || '',
+      mobileNumber: updated.phone || '',
       role: updated.role,
       avatar: updated.avatar,
       mustChangePassword: false,

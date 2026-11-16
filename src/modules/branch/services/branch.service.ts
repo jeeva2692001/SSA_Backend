@@ -9,6 +9,32 @@ export class BranchService {
     this.branchRepository = new BranchRepository();
   }
 
+  private validateBranchName(name: string): string {
+    const trimmed = (name || '').trim();
+    if (!trimmed) {
+      throw new Error('Branch / Division Name is required.');
+    }
+    if (!/[a-zA-Z0-9]/.test(trimmed)) {
+      throw new Error('Branch / Division Name cannot contain only special characters.');
+    }
+    if (/^\d+$/.test(trimmed.replace(/\s+/g, ''))) {
+      throw new Error('Branch / Division Name cannot contain only numeric characters.');
+    }
+    if (trimmed.length < 2) {
+      throw new Error('Branch / Division Name must be at least 2 characters.');
+    }
+    if (trimmed.length > 100) {
+      throw new Error('Branch / Division Name cannot exceed 100 characters.');
+    }
+    if (!/[a-zA-Z]/.test(trimmed)) {
+      throw new Error('Branch / Division Name must contain at least one letter.');
+    }
+    if (!/^[a-zA-Z0-9\s.'&()_-]+$/.test(trimmed)) {
+      throw new Error('Branch / Division Name contains unsupported special characters.');
+    }
+    return trimmed;
+  }
+
   async getBranches(companyId: string): Promise<BranchModel[]> {
     const branches = await this.branchRepository.findAllByCompanyId(companyId);
     branches.forEach(b => delete b.password);
@@ -16,7 +42,7 @@ export class BranchService {
   }
 
   async addBranch(companyId: string, branchData: Partial<BranchModel>): Promise<BranchModel> {
-    const name = branchData.name?.trim();
+    const name = this.validateBranchName(branchData.name || '');
     const code = branchData.code?.trim().toUpperCase();
     const manager = branchData.manager?.trim();
     const address = branchData.address?.trim();
@@ -78,8 +104,7 @@ export class BranchService {
     }
 
     if (branchData.name !== undefined) {
-      const trimmedName = branchData.name.trim();
-      if (!trimmedName) throw new Error('Branch name cannot be empty.');
+      const trimmedName = this.validateBranchName(branchData.name);
       const existingName = await this.branchRepository.findByNameAndCompanyId(trimmedName, companyId);
       if (existingName && existingName.branchId !== branchId) {
         throw new Error('A branch or division with this name is already registered for this company.');
