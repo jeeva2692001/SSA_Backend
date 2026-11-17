@@ -74,6 +74,21 @@ export class QaqcAuditModel {
   @Column({ type: 'text', nullable: true })
   summaryComments?: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  fileName?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  fileUrl?: string;
+
+  @Column({ type: 'int', nullable: true })
+  fileSize?: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  fileType?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  uploadedBy?: string;
+
   @CreateDateColumn()
   createdAt!: Date;
 

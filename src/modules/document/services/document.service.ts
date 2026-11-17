@@ -872,6 +872,11 @@ export class DocumentService {
       leadSignOffDate: data.leadSignOffDate || null,
       pmSignOffName: data.pmSignOffName || null,
       summaryComments: data.summaryComments || null,
+      fileName: data.fileName || null,
+      fileUrl: data.fileUrl || null,
+      fileSize: data.fileSize ? Number(data.fileSize) : 0,
+      fileType: data.fileType || null,
+      uploadedBy: data.uploadedBy || uploader,
     });
 
     const saved = await repo.save(audit);
@@ -923,6 +928,11 @@ export class DocumentService {
       leadSignOffDate: data.leadSignOffDate ?? audit.leadSignOffDate,
       pmSignOffName: data.pmSignOffName ?? audit.pmSignOffName,
       summaryComments: data.summaryComments ?? audit.summaryComments,
+      fileName: data.fileName !== undefined ? data.fileName : audit.fileName,
+      fileUrl: data.fileUrl !== undefined ? data.fileUrl : audit.fileUrl,
+      fileSize: data.fileSize !== undefined ? Number(data.fileSize) : audit.fileSize,
+      fileType: data.fileType !== undefined ? data.fileType : audit.fileType,
+      uploadedBy: data.uploadedBy !== undefined ? data.uploadedBy : audit.uploadedBy,
     });
 
     const saved = await repo.save(audit);
