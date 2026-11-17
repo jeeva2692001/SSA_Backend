@@ -40,6 +40,47 @@ export class VendorService {
     return await this.vendorRepo.findByIdOrCode(idOrCode);
   }
 
+  private validateVendorInputs(data: Partial<VendorModel>): void {
+    if (data.contactPerson !== undefined && data.contactPerson !== null) {
+      const cp = data.contactPerson.trim();
+      if (cp.length > 0) {
+        if (cp.length < 2 || cp.length > 100) {
+          throw new Error('Contact person name must be between 2 and 100 characters.');
+        }
+        if (/\d/.test(cp)) {
+          throw new Error('Contact person name cannot contain numbers.');
+        }
+        if (!/[a-zA-Z]/.test(cp)) {
+          throw new Error('Contact person name must contain letters and cannot be only numeric or special characters.');
+        }
+        if (!/^[a-zA-Z\s.'-]+$/.test(cp)) {
+          throw new Error('Contact person name should contain only letters, dots, hyphens, and apostrophes.');
+        }
+      }
+    }
+
+    if (data.notes !== undefined && data.notes !== null) {
+      const notesTrim = data.notes.trim();
+      if (notesTrim.length > 0) {
+        if (notesTrim.length > 500) {
+          throw new Error('Notes cannot exceed 500 characters.');
+        }
+        if (!/[a-zA-Z0-9]/.test(notesTrim)) {
+          throw new Error('Notes cannot be only special characters.');
+        }
+        if (/^\d+$/.test(notesTrim.replace(/[\s,.'&()/#:;!?"'–—+@%*-]+/g, '')) || /^\d+$/.test(notesTrim)) {
+          throw new Error('Notes cannot be only numeric characters and must contain valid text.');
+        }
+        if (!/[a-zA-Z]/.test(notesTrim)) {
+          throw new Error('Notes must contain alphabetic text.');
+        }
+        if (!/^[a-zA-Z0-9\s,.'&()/#:;!?"'–—+@%*_-]+$/.test(notesTrim)) {
+          throw new Error('Notes contains unsupported special characters.');
+        }
+      }
+    }
+  }
+
   async createVendor(
     data: Partial<VendorModel>,
     context: { companyId?: string; branchId?: string | null; userId?: string; role?: string }
@@ -47,6 +88,7 @@ export class VendorService {
     if (!data.vendorName || !data.vendorName.trim()) {
       throw new Error('Vendor name is required.');
     }
+    this.validateVendorInputs(data);
     const trimmedVendorName = data.vendorName.trim();
     if (trimmedVendorName.length < 2) {
       throw new Error('Vendor name must be at least 2 characters.');
@@ -306,6 +348,8 @@ export class VendorService {
     data: Partial<VendorModel>,
     _context?: { companyId?: string; role?: string }
   ): Promise<VendorModel | null> {
+    this.validateVendorInputs(data);
+
     const existing = await this.vendorRepo.findByIdOrCode(id);
     if (!existing) {
       throw new Error(`Vendor with ID "${id}" not found.`);

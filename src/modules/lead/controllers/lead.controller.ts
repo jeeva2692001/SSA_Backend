@@ -58,7 +58,13 @@ export class LeadController {
       const { searchParams } = new URL(req.url);
       const categoryIdStr = searchParams.get('categoryId');
       const categoryCode = searchParams.get('categoryCode') || undefined;
-      const categoryId = categoryIdStr ? parseInt(categoryIdStr, 10) : undefined;
+      let categoryId: number | undefined = undefined;
+      if (categoryIdStr !== null && categoryIdStr !== '') {
+        categoryId = Number(categoryIdStr);
+        if (!Number.isInteger(categoryId) || categoryId <= 0) {
+          return NextResponse.json({ success: false, message: 'Invalid categoryId.' }, { status: 400 });
+        }
+      }
 
       const taglines = await this.leadService.getTaglines(categoryId, categoryCode);
       return NextResponse.json({ success: true, data: taglines });

@@ -30,13 +30,21 @@ export class OpportunityService {
       const leads = await leadRepo.find({ order: { id: 'ASC' } });
 
       for (const lead of leads) {
-        // Check if an opportunity exists for this lead
-        let existing = await oppModelRepo.findOne({
-          where: [
-            { leadId: String(lead.id) },
-            { leadId: lead.leadId }
-          ]
+        const matchConditions: Array<Record<string, any>> = [{ leadId: String(lead.id) }];
+        if (lead.leadId) {
+          matchConditions.push({ leadId: lead.leadId });
+        }
+
+        // Fetch all matching opportunities for this lead and deduplicate extras
+        const matches = await oppModelRepo.find({
+          where: matchConditions,
+          order: { createdAt: 'ASC' }
         });
+        let existing = matches[0] || null;
+        if (matches.length > 1) {
+          const extras = matches.slice(1);
+          await oppModelRepo.remove(extras);
+        }
 
         // Determine live stage from lead status
         const statusLower = (lead.status || '').toLowerCase();
@@ -60,10 +68,10 @@ export class OpportunityService {
           // Create live opportunity linked to lead
           const newDeal = oppModelRepo.create({
             dealId: dealCode,
-            name: lead.leadTitle || `Project Opportunity #${lead.id}`,
-            clientName: lead.contactPerson || lead.company || 'Direct Client',
-            company: lead.company || lead.contactPerson || 'Direct Client',
-            leadId: String(lead.id),
+            name: lead.leadTitle || lead.projectName || `Project Opportunity #${lead.id}`,
+            clientName: (lead.clientName || lead.contactPerson || lead.company || 'Direct Client').trim(),
+            company: lead.company || lead.organisation || lead.contactPerson || lead.clientName || 'Direct Client',
+            leadId: lead.leadId || String(lead.id),
             clientId: lead.clientId || null,
             companyId: lead.companyId || companyId || 'COM-001',
             branchId: lead.branchId || branchId || null,
@@ -76,11 +84,16 @@ export class OpportunityService {
           });
           await oppModelRepo.save(newDeal);
         } else {
-          // Keep live attributes in sync (name, client, budget, assigned)
-          existing.name = lead.leadTitle || existing.name;
-          existing.company = lead.company || existing.company;
-          existing.clientName = lead.contactPerson || lead.company || existing.clientName;
-          if (!existing.dealValue || existing.dealValue === 0) {
+          // Keep live attributes in sync (name, client, budget, lead code)
+          existing.name = lead.leadTitle || lead.projectName || existing.name;
+          existing.company = lead.company || lead.organisation || existing.company;
+          existing.clientName = (lead.clientName || lead.contactPerson || lead.company || existing.clientName || 'Direct Client').trim();
+          if (lead.leadId) {
+            existing.leadId = lead.leadId;
+          }
+          if (lead.estimatedBudget !== undefined && lead.estimatedBudget !== null && String(lead.estimatedBudget).trim() !== '') {
+            existing.dealValue = budgetNum;
+          } else if ((!existing.dealValue || Number(existing.dealValue) === 0) && budgetNum > 0) {
             existing.dealValue = budgetNum;
           }
           if ((!existing.assignedEmployee || existing.assignedEmployee === 'Unassigned') && lead.assignedEmployee) {
@@ -90,6 +103,7 @@ export class OpportunityService {
             existing.expectedClosureDate = lead.expectedCompletionDate;
           }
           if (existing.stage === 'Won') {
+            existing.probability = 100;
             // Live deal was marked Won: preserve Won stage and sync Won status to lead
             if (!lead.status || !lead.status.toLowerCase().includes('won')) {
               lead.status = 'Won';
@@ -98,9 +112,14 @@ export class OpportunityService {
           } else if (stage === 'Won') {
             existing.stage = 'Won';
             existing.probability = 100;
+          } else if (stage === 'Lost') {
+            existing.stage = 'Lost';
+            existing.probability = 0;
           } else if (existing.stage !== stage) {
             existing.stage = stage;
             existing.probability = this.getDefaultProbabilityForStage(stage);
+          } else if (existing.probability === undefined || existing.probability === null) {
+            existing.probability = this.getDefaultProbabilityForStage(existing.stage);
           }
           if (lead.clientId && (!existing.clientId || existing.clientId !== lead.clientId)) {
             existing.clientId = lead.clientId;
@@ -263,6 +282,10 @@ export class OpportunityService {
             lead.status = 'Negotiation';
           } else if (stage === 'Proposal Sent') {
             lead.status = 'Proposal Sent';
+          } else if (stage === 'Discovery') {
+            if (!['new lead', 'contacted', 'requirement collection'].includes((lead.status || '').toLowerCase())) {
+              lead.status = 'Contacted';
+            }
           }
           await leadRepo.save(lead);
         }

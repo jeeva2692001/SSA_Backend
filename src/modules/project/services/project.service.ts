@@ -22,12 +22,14 @@ import { AppDataSource } from '../../../shared/config/data-source';
 import { LeadModel } from '../../lead/models/lead.model';
 import { ClientModel } from '../../client/models/client.model';
 import { EmployeeModel } from '../../employee/models/employee.model';
+import { MilestoneRepository } from '../repositories/milestone.repository';
 
 
 export class ProjectService {
   private projectRepo = new ProjectRepository();
   private employeeRepo = new EmployeeRepository();
   private userRepo = new UserRepository();
+  private milestoneRepo = new MilestoneRepository();
 
   // --- SEED DEFAULT MASTER DATA ---
   async seedMasterData() {
@@ -105,6 +107,7 @@ export class ProjectService {
     companyId?: string;
     projectType?: string;
     projectSubType?: string;
+    budget?: number;
     floors?: string[]; // e.g. ["GF", "01", "02", "03", "04", "TR"]
     disciplines?: string[]; // e.g. ["AR", "ST", "EL", "PL", "FF", "HV", "IN"]
     startDate?: string;
@@ -124,7 +127,32 @@ export class ProjectService {
   }) {
     await this.seedMasterData();
 
-    const prefix = (input.projectPrefix || 'GVR').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!input.projectName || !input.projectName.trim()) {
+      throw new Error('Project Name is required.');
+    }
+    const cleanProjectName = input.projectName.trim();
+    if (cleanProjectName.length < 2 || cleanProjectName.length > 50) {
+      throw new Error('Project Name must be between 2 and 50 characters.');
+    }
+    if (!/[a-zA-Z]/.test(cleanProjectName)) {
+      throw new Error('Project Name must contain letters and cannot be only numeric or special characters.');
+    }
+
+    if (!input.projectPrefix || !input.projectPrefix.trim()) {
+      throw new Error('Project Code Prefix is required.');
+    }
+    const prefix = input.projectPrefix.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (prefix.length < 2 || prefix.length > 5) {
+      throw new Error('Project Code Prefix must be between 2 and 5 alphanumeric characters.');
+    }
+
+    if (input.budget !== undefined && input.budget !== null) {
+      const budgetNum = Number(input.budget);
+      if (isNaN(budgetNum) || budgetNum <= 0) {
+        throw new Error('Agreed Contract / Project Value must be a valid positive amount.');
+      }
+    }
+
     const currentYear = new Date().getFullYear();
     let seq = await this.projectRepo.getNextProjectSequence(prefix, currentYear, input.companyId);
     let seqPadded = String(seq).padStart(3, '0');
@@ -273,6 +301,13 @@ export class ProjectService {
       await this.generateStandardFolders(project.id, project.projectName, input.clientName || 'System');
     } catch (folderErr) {
       console.error('[ProjectService] Error generating folder structure:', folderErr);
+    }
+
+    // 3b. Auto-seed default milestones for new project
+    try {
+      await this.milestoneRepo.seedDefaultMilestones(project.id, project.projectCode, input.companyId);
+    } catch (mErr) {
+      console.warn('[ProjectService] Auto-seed milestones note:', mErr);
     }
 
     // 4. Send Welcome & Client Login Credentials via Email (to Client role)
@@ -537,8 +572,20 @@ export class ProjectService {
         uniqueDisciplines.unshift({ code: 'REF', folderCode: `${enriched.projectCode}-REF` });
       }
 
+      let calculatedProgress = Number(enriched.progress) || 0;
+      try {
+        const pMilestones = await this.milestoneRepo.findByProjectId(p.id);
+        if (pMilestones && pMilestones.length > 0) {
+          const completed = pMilestones.filter((m: any) => m.status === 'Completed').length;
+          calculatedProgress = Math.round((completed / pMilestones.length) * 100);
+        }
+      } catch (mErr) {
+        // fallback to enriched.progress
+      }
+
       result.push({
         ...enriched,
+        progress: calculatedProgress,
         teamMembers: team,
         enableReferencesFolder: isRefEnabled,
         allowClientDownload: Boolean(enriched.allowClientDownload),
@@ -850,8 +897,143 @@ export class ProjectService {
     }
 
     const payload: Partial<ProjectModel> = { ...updates };
-    if (updates.client && !updates.clientName) payload.clientName = updates.client;
-    if (updates.budget !== undefined) payload.budget = Number(updates.budget);
+    if (updates.projectName !== undefined) {
+      const cleanName = (updates.projectName || '').trim();
+      if (!cleanName) {
+        throw new Error('Project Name is required.');
+      }
+      if (cleanName.length < 2 || cleanName.length > 50) {
+        throw new Error('Project Name must be between 2 and 50 characters.');
+      }
+      if (!/[a-zA-Z]/.test(cleanName)) {
+        throw new Error('Project Name must contain letters and cannot be only numeric or special characters.');
+      }
+      if (!/[a-zA-Z0-9]/.test(cleanName)) {
+        throw new Error('Project Name cannot contain only special characters.');
+      }
+      if (!/^[a-zA-Z0-9\s,.'&()/#:;!?"'–—+*@_-]+$/.test(cleanName)) {
+        throw new Error('Project Name contains invalid characters.');
+      }
+      payload.projectName = cleanName;
+    }
+
+    const clientVal = updates.clientName !== undefined ? updates.clientName : updates.client;
+    if (clientVal !== undefined) {
+      const cleanClient = (clientVal || '').trim();
+      if (!cleanClient) {
+        throw new Error('Client Account is required.');
+      }
+      if (cleanClient.length < 2 || cleanClient.length > 100) {
+        throw new Error('Client Account must be between 2 and 100 characters.');
+      }
+      if (!/[a-zA-Z]/.test(cleanClient)) {
+        throw new Error('Client Account must contain letters and cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z0-9\s,.'&()/#:;!?"'–—+*@_-]+$/.test(cleanClient)) {
+        throw new Error('Client Account contains invalid characters.');
+      }
+      payload.clientName = cleanClient;
+    }
+
+    if (updates.location !== undefined) {
+      const cleanLoc = (updates.location || '').trim();
+      if (updates.location && !cleanLoc) {
+        throw new Error('Location cannot be only spaces.');
+      }
+      if (cleanLoc) {
+        if (cleanLoc.length < 2 || cleanLoc.length > 150) {
+          throw new Error('Location must be between 2 and 150 characters.');
+        }
+        if (!/[a-zA-Z]/.test(cleanLoc)) {
+          throw new Error('Location must contain letters and cannot be only numeric or special characters.');
+        }
+        if (!/^[a-zA-Z0-9\s,.'&()/#:;!?"'–—+*@_-]+$/.test(cleanLoc)) {
+          throw new Error('Location contains invalid characters.');
+        }
+      }
+      payload.location = cleanLoc;
+    }
+
+    if (updates.siteArea !== undefined) {
+      const cleanArea = (updates.siteArea || '').trim();
+      if (updates.siteArea && !cleanArea) {
+        throw new Error('Site Area cannot be only spaces.');
+      }
+      if (cleanArea) {
+        if (cleanArea.length < 2 || cleanArea.length > 50) {
+          throw new Error('Site Area must be between 2 and 50 characters.');
+        }
+        if (!/\d/.test(cleanArea)) {
+          throw new Error('Site Area must contain a numeric value.');
+        }
+        if (!/[a-zA-Z]/.test(cleanArea)) {
+          throw new Error('Site Area must include a unit (e.g., Sq.ft, Acres, Sq.m) and cannot be only numbers.');
+        }
+        if (!/^[a-zA-Z0-9\s,./'-]+$/.test(cleanArea)) {
+          throw new Error('Site Area contains invalid characters.');
+        }
+      }
+      payload.siteArea = cleanArea;
+    }
+
+    if (updates.builtUpArea !== undefined) {
+      const cleanArea = (updates.builtUpArea || '').trim();
+      if (updates.builtUpArea && !cleanArea) {
+        throw new Error('Built-Up Area cannot be only spaces.');
+      }
+      if (cleanArea) {
+        if (cleanArea.length < 2 || cleanArea.length > 50) {
+          throw new Error('Built-Up Area must be between 2 and 50 characters.');
+        }
+        if (!/\d/.test(cleanArea)) {
+          throw new Error('Built-Up Area must contain a numeric value.');
+        }
+        if (!/[a-zA-Z]/.test(cleanArea)) {
+          throw new Error('Built-Up Area must include a unit (e.g., Sq.ft, Acres, Sq.m) and cannot be only numbers.');
+        }
+        if (!/^[a-zA-Z0-9\s,./'-]+$/.test(cleanArea)) {
+          throw new Error('Built-Up Area contains invalid characters.');
+        }
+      }
+      payload.builtUpArea = cleanArea;
+    }
+
+    if (updates.budget !== undefined) {
+      const bNum = Number(updates.budget);
+      if (isNaN(bNum) || bNum <= 0) {
+        throw new Error('Budget must be greater than zero.');
+      }
+      payload.budget = bNum;
+    }
+
+    if (updates.timeline !== undefined) {
+      const cleanTimeline = (updates.timeline || '').trim();
+      if (updates.timeline && !cleanTimeline) {
+        throw new Error('Timeline Range cannot be only spaces.');
+      }
+      if (cleanTimeline) {
+        if (cleanTimeline.length < 2 || cleanTimeline.length > 60) {
+          throw new Error('Timeline Range must be between 2 and 60 characters.');
+        }
+        const isDateRange = /^\d{4}-\d{2}-\d{2}(\s*(to|-)\s*\d{4}-\d{2}-\d{2})?$/i.test(cleanTimeline) || /^\d{1,2}[/-]\d{1,2}[/-]\d{2,4}(\s*(to|-)\s*\d{1,2}[/-]\d{1,2}[/-]\d{2,4})?$/i.test(cleanTimeline);
+        if (!isDateRange && !/[a-zA-Z]/.test(cleanTimeline)) {
+          throw new Error('Timeline Range must contain letters or valid dates (e.g., 2026-11-06 to 2026-11-24, Jan 2026 - Dec 2027) and cannot be only numeric or special characters.');
+        }
+        if (!/^[a-zA-Z0-9\s,./()–—+*@_#-]+$/.test(cleanTimeline)) {
+          throw new Error('Timeline Range contains invalid characters.');
+        }
+      }
+      payload.timeline = cleanTimeline;
+      const dateMatches = cleanTimeline.match(/\d{4}-\d{2}-\d{2}/g);
+      if (dateMatches && dateMatches.length >= 1) {
+        payload.startDate = dateMatches[0];
+        if (dateMatches.length >= 2) {
+          payload.completionDate = dateMatches[1];
+        }
+      }
+    }
+    if (updates.startDate !== undefined) payload.startDate = updates.startDate;
+    if (updates.completionDate !== undefined) payload.completionDate = updates.completionDate;
     if (updates.progress !== undefined) payload.progress = Number(updates.progress);
     if (updates.floors && Array.isArray(updates.floors)) payload.floors = JSON.stringify(updates.floors);
 
@@ -959,6 +1141,61 @@ export class ProjectService {
       }
 
       const fileUrl = files[0]?.storagePath || '';
+
+      if (d.status === 'Rework' && latestRev) {
+        // 1. Active Drawing Deliverable in WIP (awaiting revised file upload)
+        result.push({
+          ...d,
+          tag: d.tag || d.tags || d.tagLine || '',
+          tagLine: d.tagLine || d.tag || d.tags || '',
+          tags: d.tags || d.tag || d.tagLine || '',
+          areaOfUsage: d.areaOfUsage || '',
+          drawingType: d.drawingTypeCode || d.drawingType?.code || d.drawingType?.title || '',
+          drawingTypeCode: d.drawingTypeCode || d.drawingType?.code || '',
+          revisionsCount: revisions.length,
+          latestRevision: { ...latestRev, status: 'Superseded' },
+          latestFiles: [],
+          fileUrl: '',
+          url: '',
+          originalFileName: '',
+          drawingNumber: d.drawingCode,
+          approvals: d.approvals || [],
+          assignedReviewers: d.assignedReviewers || (d.assignedReviewer ? [d.assignedReviewer] : []),
+          assignedReviewer: d.assignedReviewer || null,
+          reviewStage: 'WIP',
+          reviewHistory: d.reviewHistory || [],
+        });
+
+        // 2. Superseded Record for Revision 0 (so file is displayed in Superseded rather than as active revision)
+        result.push({
+          ...d,
+          id: `${d.id}_${latestRev.revisionCode}_SUPERSEDED`,
+          status: 'Superseded',
+          reviewStage: 'SUPERSEDED',
+          workflowStage: 'SUPERSEDED',
+          currentRevision: latestRev.revisionCode,
+          drawingTitle: `${d.drawingTitle} (${latestRev.revisionCode} - Superseded)`,
+          tag: d.tag || d.tags || d.tagLine || '',
+          tagLine: d.tagLine || d.tag || d.tags || '',
+          tags: d.tags || d.tag || d.tagLine || '',
+          areaOfUsage: d.areaOfUsage || '',
+          drawingType: d.drawingTypeCode || d.drawingType?.code || d.drawingType?.title || '',
+          drawingTypeCode: d.drawingTypeCode || d.drawingType?.code || '',
+          revisionsCount: 1,
+          latestRevision: { ...latestRev, status: 'Superseded' },
+          latestFiles: files,
+          fileUrl: fileUrl,
+          url: fileUrl,
+          originalFileName: files[0]?.originalFileName || d.drawingCode,
+          drawingNumber: d.drawingCode,
+          approvals: [],
+          assignedReviewers: [],
+          assignedReviewer: null,
+          reviewHistory: d.reviewHistory || [],
+        });
+        continue;
+      }
+
       result.push({
         ...d,
         tag: d.tag || d.tags || d.tagLine || '',
@@ -974,6 +1211,11 @@ export class ProjectService {
         url: fileUrl,
         originalFileName: files[0]?.originalFileName || '',
         drawingNumber: d.drawingCode,
+        approvals: d.approvals || [],
+        assignedReviewers: d.assignedReviewers || (d.assignedReviewer ? [d.assignedReviewer] : []),
+        assignedReviewer: d.assignedReviewer || null,
+        reviewStage: d.reviewStage || (d.status === 'Approved' ? 'APPROVED' : d.status === 'PM Review' ? 'PROJECT_MANAGEMENT' : d.status === 'Under Review' ? 'DISCIPLINE_LEAD' : 'WIP'),
+        reviewHistory: d.reviewHistory || [],
       });
     }
 
@@ -1028,6 +1270,11 @@ export class ProjectService {
         checkedBy: input.checkedBy || null,
         approvedBy: input.approvedBy || null,
         isTemporary: Boolean(input.isTemporary ?? false),
+        approvals: (input as any).approvals || [],
+        assignedReviewers: (input as any).assignedReviewers || null,
+        assignedReviewer: (input as any).assignedReviewer || null,
+        reviewStage: (input as any).reviewStage || null,
+        reviewHistory: (input as any).reviewHistory || null,
       });
     } else {
       drawing = await this.projectRepo.updateDrawing(drawing.id, {
@@ -1044,6 +1291,11 @@ export class ProjectService {
         drawingTypeCode: drawingTypeCodeVal || drawing.drawingTypeCode,
         drawingTypeId: drawingTypeIdVal || drawing.drawingTypeId,
         isTemporary: input.isTemporary !== undefined ? Boolean(input.isTemporary) : drawing.isTemporary,
+        approvals: (input as any).approvals !== undefined ? (input as any).approvals : drawing.approvals,
+        assignedReviewers: (input as any).assignedReviewers !== undefined ? (input as any).assignedReviewers : drawing.assignedReviewers,
+        assignedReviewer: (input as any).assignedReviewer !== undefined ? (input as any).assignedReviewer : drawing.assignedReviewer,
+        reviewStage: (input as any).reviewStage !== undefined ? (input as any).reviewStage : drawing.reviewStage,
+        reviewHistory: (input as any).reviewHistory !== undefined ? (input as any).reviewHistory : drawing.reviewHistory,
       });
     }
 
@@ -1094,7 +1346,10 @@ export class ProjectService {
   }
 
   async getDrawingDetails(drawingId: string) {
-    const drawing = await this.projectRepo.findDrawingById(drawingId);
+    let drawing = await this.projectRepo.findDrawingById(drawingId);
+    if (!drawing) {
+      drawing = await this.projectRepo.findDrawingByCode(drawingId);
+    }
     if (!drawing) throw new Error('Drawing not found.');
 
     const project = await this.projectRepo.findProjectById(drawing.projectId);
@@ -1139,7 +1394,10 @@ export class ProjectService {
     fileSize?: number;
     uploadedBy?: string;
   }) {
-    const drawing = await this.projectRepo.findDrawingById(input.drawingId);
+    let drawing = await this.projectRepo.findDrawingById(input.drawingId);
+    if (!drawing) {
+      drawing = await this.projectRepo.findDrawingByCode(input.drawingId);
+    }
     if (!drawing) throw new Error('Drawing not found.');
 
     // 1. Create new revision record
@@ -1385,6 +1643,22 @@ export class ProjectService {
     if ((updates as any).isTemporary !== undefined) {
       payload.isTemporary = Boolean((updates as any).isTemporary);
     }
+    if ((updates as any).approvals !== undefined) payload.approvals = (updates as any).approvals;
+    if ((updates as any).assignedReviewers !== undefined) payload.assignedReviewers = (updates as any).assignedReviewers;
+    if ((updates as any).assignedReviewer !== undefined) payload.assignedReviewer = (updates as any).assignedReviewer;
+    if ((updates as any).reviewStage !== undefined) payload.reviewStage = (updates as any).reviewStage;
+    if ((updates as any).reviewPriority !== undefined) payload.reviewPriority = (updates as any).reviewPriority;
+    if ((updates as any).reviewDueDate !== undefined) payload.reviewDueDate = (updates as any).reviewDueDate;
+    if ((updates as any).reviewNotes !== undefined) payload.reviewNotes = (updates as any).reviewNotes;
+    if ((updates as any).reviewedBy !== undefined) payload.reviewedBy = (updates as any).reviewedBy;
+    if ((updates as any).reviewedAt !== undefined) payload.reviewedAt = (updates as any).reviewedAt;
+    if ((updates as any).disciplineLeadApproved !== undefined) payload.disciplineLeadApproved = (updates as any).disciplineLeadApproved;
+    if ((updates as any).disciplineLeadApprovedBy !== undefined) payload.disciplineLeadApprovedBy = (updates as any).disciplineLeadApprovedBy;
+    if ((updates as any).disciplineLeadApprovedAt !== undefined) payload.disciplineLeadApprovedAt = (updates as any).disciplineLeadApprovedAt;
+    if ((updates as any).pmApproved !== undefined) payload.pmApproved = (updates as any).pmApproved;
+    if ((updates as any).pmApprovedBy !== undefined) payload.pmApprovedBy = (updates as any).pmApprovedBy;
+    if ((updates as any).pmApprovedAt !== undefined) payload.pmApprovedAt = (updates as any).pmApprovedAt;
+    if ((updates as any).reviewHistory !== undefined) payload.reviewHistory = (updates as any).reviewHistory;
 
     const isFinalising = updates.status && updates.status.trim().toLowerCase() === 'finalised';
     if (isFinalising) {
@@ -1392,6 +1666,14 @@ export class ProjectService {
         await this.projectRepo.updateDrawing(drawing.id, payload);
       }
       return await this.finaliseDrawing(drawing.id);
+    }
+
+    const isRework = updates.status && updates.status.trim().toLowerCase() === 'rework';
+    if (isRework) {
+      await this.projectRepo.updateRevisionsByDrawingId(drawing.id, { status: 'Superseded' });
+      try {
+        await this.ensureSupersededFolder(drawing.projectId, drawing.disciplineCode);
+      } catch { }
     }
 
     await this.projectRepo.updateDrawing(drawing.id, payload);
@@ -1705,6 +1987,22 @@ export class ProjectService {
     folderType?: string;
     createdBy?: string;
   }, companyId?: string): Promise<FolderModel> {
+    const cleanName = (input.name || '').trim();
+    if (!cleanName) {
+      throw new Error('Folder name is required.');
+    }
+    if (cleanName.length < 2 || cleanName.length > 50) {
+      throw new Error('Folder name must be between 2 and 50 characters.');
+    }
+    if (!/[a-zA-Z0-9]/.test(cleanName)) {
+      throw new Error('Folder name cannot contain only special characters.');
+    }
+    if (/^\d+$/.test(cleanName.replace(/[\s_.\-&()'/]+/g, '')) || !/[a-zA-Z]/.test(cleanName)) {
+      throw new Error('Folder name cannot be numeric-only and must contain letters.');
+    }
+    if (!/^[a-zA-Z0-9\s_.\-&()'/]+$/.test(cleanName)) {
+      throw new Error('Folder name contains invalid characters.');
+    }
     let project = await this.projectRepo.findProjectById(input.projectId, companyId);
     if (!project) {
       project = await this.projectRepo.findProjectByCode(input.projectId, companyId);
@@ -1717,7 +2015,7 @@ export class ProjectService {
     return await this.projectRepo.createFolder({
       projectId: pId,
       parentFolderId: input.parentFolderId || null,
-      name: input.name.trim(),
+      name: cleanName,
       folderType: input.folderType || 'CUSTOM',
       sortOrder: 99,
       isSystemFolder: false,
@@ -1729,7 +2027,23 @@ export class ProjectService {
    * Rename a folder
    */
   async renameFolder(folderId: string, name: string): Promise<FolderModel> {
-    return await this.projectRepo.updateFolder(folderId, { name: name.trim() });
+    const cleanName = (name || '').trim();
+    if (!cleanName) {
+      throw new Error('Folder name is required.');
+    }
+    if (cleanName.length < 2 || cleanName.length > 50) {
+      throw new Error('Folder name must be between 2 and 50 characters.');
+    }
+    if (!/[a-zA-Z0-9]/.test(cleanName)) {
+      throw new Error('Folder name cannot contain only special characters.');
+    }
+    if (/^\d+$/.test(cleanName.replace(/[\s_.\-&()'/]+/g, '')) || !/[a-zA-Z]/.test(cleanName)) {
+      throw new Error('Folder name cannot be numeric-only and must contain letters.');
+    }
+    if (!/^[a-zA-Z0-9\s_.\-&()'/]+$/.test(cleanName)) {
+      throw new Error('Folder name contains invalid characters.');
+    }
+    return await this.projectRepo.updateFolder(folderId, { name: cleanName });
   }
 
   /**

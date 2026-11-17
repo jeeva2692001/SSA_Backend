@@ -1,6 +1,7 @@
 import { Repository } from 'typeorm';
 import { AppDataSource } from '../../../shared/config/data-source';
 import { MilestoneModel } from '../models/milestone.model';
+import { ProjectModel } from '../models/project.model';
 
 export class MilestoneRepository {
   private repo(): Repository<MilestoneModel> {
@@ -105,6 +106,15 @@ export class MilestoneRepository {
       const m = await this.create(d);
       created.push(m);
     }
+    try {
+      const completed = created.filter(m => m.status === 'Completed').length;
+      const progress = Math.round((completed / created.length) * 100);
+      await AppDataSource.getRepository(ProjectModel).createQueryBuilder()
+        .update()
+        .set({ progress })
+        .where('id = :id OR projectCode = :code', { id: projectId, code: projectCode || projectId })
+        .execute();
+    } catch {}
     return created;
   }
 }

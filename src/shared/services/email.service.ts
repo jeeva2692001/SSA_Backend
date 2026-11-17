@@ -522,6 +522,195 @@ export class EmailService {
       return { success: true, simulated: true };
     }
   }
+  private buildBrandedEmailHtml(opts: {
+    badge: string;
+    title: string;
+    bodyHtml: string;
+    footerTagline: string;
+  }): string {
+    return `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08);">
+            <div style="background: linear-gradient(135deg, #14463c 0%, #206c5c 50%, #33a18a 100%); padding: 32px 28px; text-align: center;">
+              <div style="margin-bottom: 12px;">
+                <img src="cid:ssa-logo" alt="SSA ERP Logo" style="width: 54px; height: 54px; object-fit: contain; background: #ffffff; border-radius: 12px; padding: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); display: inline-block; vertical-align: middle;" />
+              </div>
+              <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase;">SSA ERP</h1>
+              <p style="color: #b3ebde; margin: 6px 0 0 0; font-size: 11px; letter-spacing: 2.5px; text-transform: uppercase; font-weight: 600;">Plan. Design. Deliver.</p>
+            </div>
+            <div style="padding: 32px 28px; color: #1f2937;">
+              <div style="display: inline-block; padding: 6px 14px; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 20px; font-size: 11px; font-weight: 800; color: #047857; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px;">
+                ${opts.badge}
+              </div>
+              <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 800; color: #0f172a; line-height: 1.3;">${opts.title}</h2>
+              ${opts.bodyHtml}
+            </div>
+            <div style="background: #f8fafc; padding: 20px 28px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <div style="font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 4px;">${opts.footerTagline}</div>
+              <p style="margin: 0; font-size: 11px; color: #94a3b8;">&copy; ${new Date().getFullYear()} Sundar Sundram Architects. All rights reserved.</p>
+            </div>
+          </div>
+        `;
+  }
+
+  async sendCompanyWelcomeCredentialsEmail(params: {
+    companyEmail: string;
+    companyName: string;
+    companyId: string;
+    contactPerson: string;
+    password: string;
+    portalUrl?: string;
+  }): Promise<{ success: boolean; simulated?: boolean; messageId?: string }> {
+    this.initTransporter();
+
+    const portalUrl = params.portalUrl || process.env.APP_URL || 'http://localhost:5173/login';
+
+    console.log(`\n==================================================`);
+    console.log(`📨 [COMPANY CREDENTIALS EMAIL SERVICE] WELCOME & LOGIN CREDENTIALS`);
+    console.log(`🏢 Company     : ${params.companyName} (${params.companyId})`);
+    console.log(`👤 Contact     : ${params.contactPerson} <${params.companyEmail}>`);
+    console.log(`🔗 Portal URL  : ${portalUrl}`);
+    console.log(`🔑 Username    : ${params.contactPerson} / ${params.companyEmail}`);
+    console.log(`🔒 Password    : ${params.password}`);
+    if (!this.isConfigured) {
+      console.log(`⚠️ SMTP Mode   : Simulated / Dev Mode (No SMTP configured in .env)`);
+    } else {
+      console.log(`🚀 SMTP Mode   : Live Delivery via ${process.env.SMTP_HOST}`);
+    }
+    console.log(`==================================================\n`);
+
+    if (!this.isConfigured || !this.transporter) {
+      return { success: true, simulated: true };
+    }
+
+    try {
+      const fromAddress = process.env.SMTP_FROM || `"SSA ERP Administration" <no-reply@ssa-erp.com>`;
+      const logoAtt = this.getLogoAttachment();
+      const attachments = logoAtt ? [logoAtt] : [];
+
+      const html = this.buildBrandedEmailHtml({
+        badge: '✦ Company Account Registered',
+        title: `Welcome to SSA ERP, ${params.companyName}!`,
+        footerTagline: 'SSA ERP &bull; Enterprise Tenant Administration',
+        bodyHtml: `
+              <p style="margin: 0 0 18px 0; font-size: 14px; line-height: 1.6; color: #4b5563;">
+                Hello <strong>${params.contactPerson}</strong>, your company <strong>${params.companyName}</strong> has been registered on the <strong>SSA ERP Platform</strong> under Tenant ID <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 6px; font-size: 12px; font-weight: 700; color: #0f172a;">${params.companyId}</code>.
+              </p>
+
+              <div style="background: #f8fafc; border: 1.5px solid #e2e8f0; border-radius: 14px; padding: 22px; margin: 24px 0;">
+                <div style="font-size: 11px; font-weight: 800; color: #206c5c; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 14px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+                  Your Company Login Credentials
+                </div>
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                  <tr>
+                    <td style="padding: 6px 0; color: #64748b; width: 150px; font-weight: 600;">Company ID:</td>
+                    <td style="padding: 6px 0; color: #0f172a; font-weight: 800; font-family: monospace;">${params.companyId}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Username:</td>
+                    <td style="padding: 6px 0; color: #0f172a; font-weight: 800; font-family: monospace;">${params.contactPerson}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Registered Email:</td>
+                    <td style="padding: 6px 0; color: #475569; font-weight: 600;">${params.companyEmail}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 6px 0; color: #64748b; font-weight: 600;">Password:</td>
+                    <td style="padding: 6px 0; color: #059669; font-weight: 800; font-family: monospace; font-size: 14px;">${params.password}</td>
+                  </tr>
+                </table>
+                <div style="text-align: center; margin-top: 20px; padding-top: 14px; border-top: 1px dashed #cbd5e1;">
+                  <a href="${portalUrl}" target="_blank" style="display: inline-block; background: #206c5c; color: #ffffff; font-size: 13px; font-weight: 700; padding: 12px 28px; border-radius: 10px; text-decoration: none; box-shadow: 0 4px 10px rgba(32, 108, 92, 0.3);">
+                    Sign In to SSA Portal &rarr;
+                  </a>
+                  <p style="margin: 8px 0 0 0; font-size: 11px; color: #94a3b8;">Portal Link: ${portalUrl}</p>
+                </div>
+              </div>
+
+              <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 14px 18px; border-radius: 8px; margin: 22px 0;">
+                <p style="margin: 0; font-size: 12px; color: #92400e; line-height: 1.5;">
+                  <strong style="color: #78350f;">Security Notice:</strong> Please keep these credentials secure and update your password after your first login.
+                </p>
+              </div>
+        `,
+      });
+
+      const info = await this.transporter.sendMail({
+        from: fromAddress,
+        to: params.companyEmail,
+        subject: `[SSA ERP] Welcome ${params.companyName}! Your Company Login Credentials (${params.companyId})`,
+        attachments,
+        html,
+      });
+
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      console.error('Failed to send company welcome credentials email via SMTP:', error.message);
+      return { success: true, simulated: true };
+    }
+  }
+
+  async sendProfileVerificationOtpEmail(
+    toEmail: string,
+    otp: string,
+    userName: string = 'User'
+  ): Promise<{ success: boolean; simulated?: boolean; messageId?: string }> {
+    this.initTransporter();
+
+    console.log(`\n==================================================`);
+    console.log(`📨 [EMAIL OTP SERVICE] PROFILE CONTACT VERIFICATION`);
+    console.log(`👤 Recipient : ${userName} <${toEmail}>`);
+    console.log(`🔑 OTP Code  : ${otp}`);
+    console.log(`⏳ Validity  : 10 Minutes`);
+    if (!this.isConfigured) {
+      console.log(`⚠️ SMTP Mode : Simulated / Dev Mode (No SMTP configured in .env)`);
+      console.log(`💡 Tip       : Enter code "${otp}" or bypass code "111111" to verify.`);
+    } else {
+      console.log(`🚀 SMTP Mode : Live Delivery via ${process.env.SMTP_HOST}`);
+    }
+    console.log(`==================================================\n`);
+
+    if (!this.isConfigured || !this.transporter) {
+      return { success: true, simulated: true };
+    }
+
+    try {
+      const fromAddress = process.env.SMTP_FROM || `"SSA ERP Security" <no-reply@ssa-erp.com>`;
+      const logoAtt = this.getLogoAttachment();
+      const attachments = logoAtt ? [logoAtt] : [];
+
+      const html = this.buildBrandedEmailHtml({
+        badge: '✦ Contact Verification Request',
+        title: `Verify Your New Email Address, ${userName}`,
+        footerTagline: 'SSA ERP &bull; Account Security Verification',
+        bodyHtml: `
+              <p style="margin: 0 0 20px 0; font-size: 14px; line-height: 1.6; color: #4b5563;">
+                A request was made to update the registered email address on your SSA ERP profile to <strong>${toEmail}</strong>. Enter the one-time verification code below to confirm and save this change:
+              </p>
+              <div style="background: #f0fbf8; border: 2px dashed #33a18a; border-radius: 14px; padding: 22px; text-align: center; margin: 24px 0;">
+                <div style="font-size: 11px; font-weight: 700; color: #206c5c; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1.5px;">Email Verification Code</div>
+                <span style="font-size: 38px; font-weight: 800; letter-spacing: 12px; color: #206c5c; font-family: 'Space Mono', Monaco, 'Courier New', monospace; padding-left: 12px;">${otp}</span>
+                <p style="margin: 10px 0 0 0; font-size: 12px; color: #5cb8a6; font-weight: 500;">Valid for <strong style="color: #206c5c;">10 minutes</strong> &bull; Single-use verification code</p>
+              </div>
+              <p style="margin: 18px 0 0 0; font-size: 12px; color: #9ca3af; line-height: 1.4;">
+                If you did not request this email change, your account email has not been modified. You may ignore this message.
+              </p>
+        `,
+      });
+
+      const info = await this.transporter.sendMail({
+        from: fromAddress,
+        to: toEmail,
+        subject: `[SSA ERP] Email Verification OTP: ${otp}`,
+        attachments,
+        html,
+      });
+
+      return { success: true, messageId: info.messageId };
+    } catch (error: any) {
+      console.error('Failed to send profile verification OTP email via SMTP:', error.message);
+      return { success: true, simulated: true };
+    }
+  }
 }
 
 export const emailService = new EmailService();

@@ -86,76 +86,127 @@ export class ClientService {
     };
   }
 
-  async createClient(
-    data: Partial<ClientModel>,
-    userContext: { companyId: string; branchId: string | null; role: string; userId: string }
-  ): Promise<ClientModel> {
-    if (!data.clientName || !data.clientName.trim()) {
-      throw new Error('Client Name is required.');
+  private validateClientFields(data: Partial<ClientModel>, isUpdate: boolean): void {
+    if (!isUpdate || data.clientName !== undefined) {
+      if (!data.clientName || !data.clientName.trim()) {
+        throw new Error('Client Name is required.');
+      }
+      const name = data.clientName.trim();
+      if (name.length < 2 || name.length > 100) {
+        throw new Error('Client Name must be between 2 and 100 characters.');
+      }
+      if (!/[a-zA-Z]/.test(name)) {
+        throw new Error('Client Name must contain letters and cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z\s.'-]+$/.test(name)) {
+        throw new Error('Client Name should contain only letters, dots, hyphens, and apostrophes.');
+      }
     }
-    if (data.clientName.trim().length < 2 || data.clientName.trim().length > 100) {
-      throw new Error('Client Name must be between 2 and 100 characters.');
-    }
-    if (data.company && data.company.trim()) {
+
+    if (data.company !== undefined && data.company !== null) {
       const comp = data.company.trim();
-      if (comp.length < 2 || comp.length > 150) {
-        throw new Error('Company name must be between 2 and 150 characters.');
+      if (comp.length > 0) {
+        if (comp.length < 2 || comp.length > 150) {
+          throw new Error('Company name must be between 2 and 150 characters.');
+        }
+        if (!/[a-zA-Z]/.test(comp)) {
+          throw new Error('Company name must contain at least one letter and cannot be only numeric or special characters.');
+        }
+        if (!/^[a-zA-Z0-9\s,.'&()/#_–—-]+$/.test(comp)) {
+          throw new Error('Company name contains invalid characters.');
+        }
       }
-      if (!/[a-zA-Z]/.test(comp)) {
-        throw new Error('Company name must contain at least one letter and cannot be only numeric or special characters.');
+    }
+
+    if (data.contactPerson !== undefined && data.contactPerson !== null) {
+      const cp = data.contactPerson.trim();
+      if (cp.length > 0) {
+        if (cp.length < 2 || cp.length > 100) {
+          throw new Error('Contact person name must be between 2 and 100 characters.');
+        }
+        if (/\d/.test(cp)) {
+          throw new Error('Contact person name cannot contain numbers.');
+        }
+        if (!/[a-zA-Z]/.test(cp)) {
+          throw new Error('Contact person name must contain letters and cannot be only numeric or special characters.');
+        }
+        if (!/^[a-zA-Z\s.'-]+$/.test(cp)) {
+          throw new Error('Contact person name should contain only letters, dots, hyphens, and apostrophes.');
+        }
       }
-      if (!/^[a-zA-Z0-9\s,.'&()/#_–—-]*$/.test(comp)) {
-        throw new Error('Company name contains invalid characters.');
+    }
+
+    if (!isUpdate || data.mobile !== undefined) {
+      if (!data.mobile || !data.mobile.trim()) {
+        throw new Error('Mobile number is required.');
+      }
+      const cleanMobile = data.mobile.trim();
+      if (!/^[6-9]\d{9}$/.test(cleanMobile)) {
+        throw new Error('Mobile number must be a valid 10-digit number starting with 6-9.');
       }
     }
-    if (data.contactPerson && (data.contactPerson.trim().length < 2 || data.contactPerson.trim().length > 100)) {
-      throw new Error('Contact person name must be between 2 and 100 characters.');
+
+    if (!isUpdate || data.email !== undefined) {
+      if (!data.email || !data.email.trim()) {
+        throw new Error('Email address is required.');
+      }
+      const cleanEmail = data.email.trim();
+      if (cleanEmail.length < 5 || cleanEmail.length > 100) {
+        throw new Error('Email address must be between 5 and 100 characters.');
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+        throw new Error('Email address must be a valid email format (e.g. client@organization.com).');
+      }
     }
-    if (!data.mobile || !data.mobile.trim()) {
-      throw new Error('Mobile number is required.');
+
+    if (!isUpdate || data.address !== undefined) {
+      if (!data.address || !data.address.trim()) {
+        throw new Error('Address is required.');
+      }
+      const addr = data.address.trim();
+      if (addr.length < 5 || addr.length > 250) {
+        throw new Error('Address must be between 5 and 250 characters.');
+      }
+      if (!/[a-zA-Z]/.test(addr)) {
+        throw new Error('Address must contain letters and cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z0-9\s,./#()'&_–—-]+$/.test(addr)) {
+        throw new Error('Address contains invalid characters.');
+      }
     }
-    const cleanMobileDigits = data.mobile.replace(/\D/g, '');
-    if (cleanMobileDigits.length !== 10) {
-      throw new Error('Mobile number must be a valid 10-digit number.');
+
+    if (!isUpdate || data.city !== undefined) {
+      if (!data.city || !data.city.trim()) {
+        throw new Error('City is required.');
+      }
+      const city = data.city.trim();
+      if (city.length < 2 || city.length > 60) {
+        throw new Error('City must be between 2 and 60 characters.');
+      }
+      if (!/[a-zA-Z]/.test(city)) {
+        throw new Error('City cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z\s.'–-]+$/.test(city)) {
+        throw new Error('City should contain only letters and standard punctuation.');
+      }
     }
-    if (!data.email || !data.email.trim()) {
-      throw new Error('Email address is required.');
+
+    if (!isUpdate || data.state !== undefined) {
+      if (!data.state || !data.state.trim()) {
+        throw new Error('State is required.');
+      }
+      const state = data.state.trim();
+      if (state.length < 2 || state.length > 60) {
+        throw new Error('State must be between 2 and 60 characters.');
+      }
+      if (!/[a-zA-Z]/.test(state)) {
+        throw new Error('State cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z\s.'–-]+$/.test(state)) {
+        throw new Error('State should contain only letters and standard punctuation.');
+      }
     }
-    if (data.email.trim().length < 5 || data.email.trim().length > 100) {
-      throw new Error('Email address must be between 5 and 100 characters.');
-    }
-    if (!data.address || !data.address.trim()) {
-      throw new Error('Address is required.');
-    }
-    if (data.address.trim().length < 5 || data.address.trim().length > 250) {
-      throw new Error('Address must be between 5 and 250 characters.');
-    }
-    if (!data.city || !data.city.trim()) {
-      throw new Error('City is required.');
-    }
-    const city = data.city.trim();
-    if (city.length < 2 || city.length > 60) {
-      throw new Error('City must be between 2 and 60 characters.');
-    }
-    if (!/[a-zA-Z]/.test(city)) {
-      throw new Error('City cannot be only numeric or special characters.');
-    }
-    if (!/^[a-zA-Z\s.'–-]+$/.test(city)) {
-      throw new Error('City should contain only letters and standard punctuation.');
-    }
-    if (!data.state || !data.state.trim()) {
-      throw new Error('State is required.');
-    }
-    const state = data.state.trim();
-    if (state.length < 2 || state.length > 60) {
-      throw new Error('State must be between 2 and 60 characters.');
-    }
-    if (!/[a-zA-Z]/.test(state)) {
-      throw new Error('State cannot be only numeric or special characters.');
-    }
-    if (!/^[a-zA-Z\s.'–-]+$/.test(state)) {
-      throw new Error('State should contain only letters and standard punctuation.');
-    }
+
     if (data.gstNo && data.gstNo.trim() && data.gstNo.trim().length !== 15) {
       throw new Error('GST number must be 15 characters.');
     }
@@ -168,18 +219,49 @@ export class ClientService {
         throw new Error('Aadhar number must be 12 digits.');
       }
     }
-    if (data.remarks && data.remarks.length > 250) {
-      throw new Error('Remarks cannot exceed 250 characters.');
+    if (data.remarks !== undefined && data.remarks !== null) {
+      const rem = data.remarks.trim();
+      if (rem.length > 0) {
+        if (rem.length > 250) {
+          throw new Error('Notes / Remarks cannot exceed 250 characters.');
+        }
+        if (!/[a-zA-Z0-9]/.test(rem)) {
+          throw new Error('Notes / Remarks cannot be only special characters.');
+        }
+        if (/^\d+$/.test(rem.replace(/[\s,.'&()/#:;!?"'–—+@%*-]+/g, '')) || /^\d+$/.test(rem)) {
+          throw new Error('Notes / Remarks cannot be only numeric characters and must contain valid text.');
+        }
+        if (!/[a-zA-Z]/.test(rem)) {
+          throw new Error('Notes / Remarks must contain alphabetic text.');
+        }
+        if (!/^[a-zA-Z0-9\s,.'&()/#:;!?"'–—+@%*_-]+$/.test(rem)) {
+          throw new Error('Notes / Remarks contains unsupported special characters.');
+        }
+      }
     }
+  }
+
+  async createClient(
+    data: Partial<ClientModel>,
+    userContext: { companyId: string; branchId: string | null; role: string; userId: string }
+  ): Promise<ClientModel> {
+    this.validateClientFields(data, false);
 
     const scopedCompanyId = data.companyId || userContext.companyId;
     const scopedBranchId = data.branchId !== undefined ? data.branchId : userContext.branchId;
 
     // Check if client with this mobile number already exists
-    const cleanMobile = data.mobile.trim();
+    const cleanMobile = data.mobile!.trim();
     const existingClientWithMobile = await this.clientRepo.findByMobile(cleanMobile, scopedCompanyId);
     if (existingClientWithMobile) {
       throw new Error(`A client with mobile number "${cleanMobile}" already exists in the system (${existingClientWithMobile.clientName} - ${existingClientWithMobile.clientCode || 'Existing'}).`);
+    }
+
+    // Check if client with this email already exists
+    const cleanEmail = data.email!.trim();
+    const existingClientWithEmail = await this.clientRepo.findByEmail(cleanEmail, scopedCompanyId);
+    if (existingClientWithEmail) {
+      throw new Error(`A client with email address "${cleanEmail}" already exists in the system (${existingClientWithEmail.clientName} - ${existingClientWithEmail.clientCode || 'Existing'}).`);
     }
 
     // Generate clientCode if not provided (e.g. CL-2026-001)
@@ -190,6 +272,14 @@ export class ClientService {
 
     const newClient = await this.clientRepo.create({
       ...data,
+      clientName: data.clientName!.trim(),
+      company: data.company ? data.company.trim() : data.company,
+      contactPerson: data.contactPerson ? data.contactPerson.trim() : data.contactPerson,
+      mobile: cleanMobile,
+      email: cleanEmail,
+      address: data.address!.trim(),
+      city: data.city!.trim(),
+      state: data.state!.trim(),
       clientCode,
       companyId: scopedCompanyId,
       branchId: scopedBranchId,
@@ -210,88 +300,35 @@ export class ClientService {
       throw new Error(`Client with ID ${id} not found.`);
     }
 
-    if (data.clientName && (data.clientName.trim().length < 2 || data.clientName.trim().length > 100)) {
-      throw new Error('Client Name must be between 2 and 100 characters.');
-    }
-    if (data.company && data.company.trim()) {
-      const comp = data.company.trim();
-      if (comp.length < 2 || comp.length > 150) {
-        throw new Error('Company name must be between 2 and 150 characters.');
-      }
-      if (!/[a-zA-Z]/.test(comp)) {
-        throw new Error('Company name must contain at least one letter and cannot be only numeric or special characters.');
-      }
-      if (!/^[a-zA-Z0-9\s,.'&()/#_–—-]*$/.test(comp)) {
-        throw new Error('Company name contains invalid characters.');
-      }
-    }
-    if (data.contactPerson && (data.contactPerson.trim().length < 2 || data.contactPerson.trim().length > 100)) {
-      throw new Error('Contact person name must be between 2 and 100 characters.');
-    }
-    if (data.email && (data.email.trim().length < 5 || data.email.trim().length > 100)) {
-      throw new Error('Email address must be between 5 and 100 characters.');
-    }
-    if (data.address && (data.address.trim().length < 5 || data.address.trim().length > 250)) {
-      throw new Error('Address must be between 5 and 250 characters.');
-    }
-    if (data.city !== undefined) {
-      if (!data.city.trim()) {
-        throw new Error('City is required.');
-      }
-      const city = data.city.trim();
-      if (city.length < 2 || city.length > 60) {
-        throw new Error('City must be between 2 and 60 characters.');
-      }
-      if (!/[a-zA-Z]/.test(city)) {
-        throw new Error('City cannot be only numeric or special characters.');
-      }
-      if (!/^[a-zA-Z\s.'–-]+$/.test(city)) {
-        throw new Error('City should contain only letters and standard punctuation.');
-      }
-    }
-    if (data.state !== undefined) {
-      if (!data.state.trim()) {
-        throw new Error('State is required.');
-      }
-      const state = data.state.trim();
-      if (state.length < 2 || state.length > 60) {
-        throw new Error('State must be between 2 and 60 characters.');
-      }
-      if (!/[a-zA-Z]/.test(state)) {
-        throw new Error('State cannot be only numeric or special characters.');
-      }
-      if (!/^[a-zA-Z\s.'–-]+$/.test(state)) {
-        throw new Error('State should contain only letters and standard punctuation.');
-      }
-    }
-    if (data.gstNo && data.gstNo.trim() && data.gstNo.trim().length !== 15) {
-      throw new Error('GST number must be 15 characters.');
-    }
-    if (data.panNo && data.panNo.trim() && data.panNo.trim().length !== 10) {
-      throw new Error('PAN number must be 10 characters.');
-    }
-    if (data.aadharNo && data.aadharNo.trim()) {
-      const aadharDigits = data.aadharNo.replace(/\D/g, '');
-      if (aadharDigits.length !== 12) {
-        throw new Error('Aadhar number must be 12 digits.');
-      }
-    }
-    if (data.remarks && data.remarks.length > 250) {
-      throw new Error('Remarks cannot exceed 250 characters.');
-    }
+    this.validateClientFields(data, true);
 
     if (data.mobile && data.mobile.trim() && data.mobile.trim() !== existing.mobile) {
-      const cleanMobileDigits = data.mobile.replace(/\D/g, '');
-      if (cleanMobileDigits.length !== 10) {
-        throw new Error('Mobile number must be a valid 10-digit number.');
-      }
-      const duplicate = await this.clientRepo.findByMobile(data.mobile.trim(), userContext.companyId);
+      const cleanMobile = data.mobile.trim();
+      const duplicate = await this.clientRepo.findByMobile(cleanMobile, userContext.companyId);
       if (duplicate && duplicate.id !== id) {
-        throw new Error(`A client with mobile number "${data.mobile.trim()}" already exists in the system (${duplicate.clientName} - ${duplicate.clientCode || 'Existing'}).`);
+        throw new Error(`A client with mobile number "${cleanMobile}" already exists in the system (${duplicate.clientName} - ${duplicate.clientCode || 'Existing'}).`);
       }
     }
 
-    const updated = await this.clientRepo.update(id, data);
+    if (data.email && data.email.trim() && data.email.trim().toLowerCase() !== (existing.email || '').toLowerCase()) {
+      const cleanEmail = data.email.trim();
+      const duplicate = await this.clientRepo.findByEmail(cleanEmail, userContext.companyId);
+      if (duplicate && duplicate.id !== id) {
+        throw new Error(`A client with email address "${cleanEmail}" already exists in the system (${duplicate.clientName} - ${duplicate.clientCode || 'Existing'}).`);
+      }
+    }
+
+    const trimmedData = { ...data };
+    if (trimmedData.clientName) trimmedData.clientName = trimmedData.clientName.trim();
+    if (trimmedData.company !== undefined) trimmedData.company = trimmedData.company ? trimmedData.company.trim() : '';
+    if (trimmedData.contactPerson !== undefined) trimmedData.contactPerson = trimmedData.contactPerson ? trimmedData.contactPerson.trim() : '';
+    if (trimmedData.mobile) trimmedData.mobile = trimmedData.mobile.trim();
+    if (trimmedData.email) trimmedData.email = trimmedData.email.trim();
+    if (trimmedData.address) trimmedData.address = trimmedData.address.trim();
+    if (trimmedData.city) trimmedData.city = trimmedData.city.trim();
+    if (trimmedData.state) trimmedData.state = trimmedData.state.trim();
+
+    const updated = await this.clientRepo.update(id, trimmedData);
     if (data.enableReferencesFolder !== undefined) {
       try {
         const isRef = Boolean(data.enableReferencesFolder);

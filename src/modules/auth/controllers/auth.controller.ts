@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { AuthService } from '../services/auth.service';
+import { AuthService, ProfileVerificationRequiredError } from '../services/auth.service';
 import { UserModel } from '../models/user.model';
 
 export class AuthController {
@@ -145,6 +145,8 @@ export class AuthController {
           role: 'Branch',
           code: currentUser.code,
           manager: currentUser.manager,
+          phone: currentUser.phone || '',
+          mobileNumber: currentUser.phone || '',
           status: currentUser.status,
           companyId: currentUser.companyId,
           // [FEATURE PAUSED] Re-enable in future: mustChangePassword: !!currentUser.isFirstLogin,
@@ -159,6 +161,8 @@ export class AuthController {
         userId: currentUser.userId,
         name: currentUser.name,
         email: currentUser.email,
+        phone: currentUser.phone || '',
+        mobileNumber: currentUser.phone || '',
         role: currentUser.role,
         avatar: currentUser.avatar,
         // [FEATURE PAUSED] Re-enable in future: mustChangePassword: currentUser.role === 'Super Admin' ? false : (currentUser.isFirstLogin ?? false),
@@ -175,12 +179,35 @@ export class AuthController {
     }
   }
 
+  async requestProfileVerification(req: NextRequest, currentUser: any): Promise<NextResponse> {
+    try {
+      const body = await req.json();
+      const result = await this.authService.requestProfileContactVerification(currentUser, body);
+      return NextResponse.json(result, { status: 200 });
+    } catch (error: any) {
+      console.error('Error in AuthController.requestProfileVerification:', error.message);
+      return NextResponse.json(
+        { message: error.message || 'Failed to initiate contact verification.' },
+        { status: 400 }
+      );
+    }
+  }
+
   async updateProfile(req: NextRequest, currentUser: any): Promise<NextResponse> {
     try {
       const body = await req.json();
       const updatedUser = await this.authService.updateProfile(currentUser, body);
       return NextResponse.json(updatedUser, { status: 200 });
     } catch (error: any) {
+      if (error instanceof ProfileVerificationRequiredError) {
+        return NextResponse.json(
+          {
+            message: error.message,
+            ...error.challenge,
+          },
+          { status: 409 }
+        );
+      }
       console.error('Error in AuthController.updateProfile:', error.message);
       return NextResponse.json(
         { message: error.message || 'Failed to update profile.' },

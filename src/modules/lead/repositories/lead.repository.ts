@@ -175,6 +175,66 @@ export class LeadRepository {
     });
   }
 
+  async findLeadByEmail(email: string, companyId?: string, excludeLeadId?: number): Promise<LeadModel | null> {
+    const repo = await this.getLeadRepo();
+    const qb = repo
+      .createQueryBuilder('lead')
+      .where('LOWER(TRIM(lead.email)) = LOWER(TRIM(:email))', { email });
+
+    if (companyId) {
+      qb.andWhere('lead.companyId = :companyId', { companyId });
+    }
+    if (excludeLeadId !== undefined) {
+      qb.andWhere('lead.id != :excludeLeadId', { excludeLeadId });
+    }
+
+    return await qb.getOne();
+  }
+
+  async findDuplicateLeadByClientDetails(
+    companyId: string | undefined,
+    clientName: string | undefined,
+    mobile: string | undefined,
+    email: string | undefined,
+    excludeLeadId?: number
+  ): Promise<{ matchedLead: LeadModel; matchedBy: 'all' | 'name_mobile' } | null> {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanName = (clientName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const cleanMobileDigits = (mobile || '').replace(/\D/g, '').slice(-10);
+
+    if (!cleanName || cleanMobileDigits.length !== 10) {
+      return null;
+    }
+
+    const repo = await this.getLeadRepo();
+    const qb = repo
+      .createQueryBuilder('lead')
+      .select(['lead.id', 'lead.leadId', 'lead.clientName', 'lead.contactPerson', 'lead.mobile', 'lead.email']);
+
+    if (companyId) {
+      qb.andWhere('lead.companyId = :companyId', { companyId });
+    }
+    if (excludeLeadId !== undefined) {
+      qb.andWhere('lead.id != :excludeLeadId', { excludeLeadId });
+    }
+
+    const candidates = await qb.getMany();
+    for (const candidate of candidates) {
+      const cName = (candidate.clientName || candidate.contactPerson || '').trim().toLowerCase().replace(/\s+/g, ' ');
+      const cMobile = (candidate.mobile || '').replace(/\D/g, '').slice(-10);
+      const cEmail = (candidate.email || '').trim().toLowerCase();
+
+      if (cName === cleanName && cMobile === cleanMobileDigits) {
+        if (cleanEmail && cEmail && cEmail === cleanEmail) {
+          return { matchedLead: candidate, matchedBy: 'all' };
+        }
+        return { matchedLead: candidate, matchedBy: 'name_mobile' };
+      }
+    }
+
+    return null;
+  }
+
   async findAllLeads(companyId: string, branchId: string | null, role: string): Promise<LeadModel[]> {
     const repo = await this.getLeadRepo();
     const query = repo.createQueryBuilder('lead')
