@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MilestoneService } from '../services/milestone.service';
+import { RbacService } from '../../rbac/services/rbac.service';
 
 export class MilestoneController {
   private milestoneService = new MilestoneService();
+  private rbacService = new RbacService();
 
   private getCompanyId(user: any, searchParams?: URLSearchParams): string | undefined {
     if (user?.role === 'Super Admin') {
@@ -26,6 +28,14 @@ export class MilestoneController {
 
   async createMilestone(req: NextRequest, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot create milestones.' }, { status: 403 });
+      }
+      const canCreate = await this.rbacService.checkUserPermission(user, 'Create');
+      if (!canCreate) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to create milestones.' }, { status: 403 });
+      }
+
       const body = await req.json();
       const companyId = user?.role === 'Super Admin'
         ? (body.companyId || user?.companyId)
@@ -44,6 +54,14 @@ export class MilestoneController {
 
   async updateMilestone(req: NextRequest, milestoneId: string, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot modify or overwrite Admin-created milestones.' }, { status: 403 });
+      }
+      const canUpdate = await this.rbacService.checkUserPermission(user, 'Update');
+      if (!canUpdate) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to modify milestones.' }, { status: 403 });
+      }
+
       const body = await req.json();
       const updated = await this.milestoneService.updateMilestone(milestoneId, body);
       return NextResponse.json({ success: true, data: updated, message: 'Milestone updated successfully.' });
@@ -55,6 +73,14 @@ export class MilestoneController {
 
   async deleteMilestone(req: NextRequest, milestoneId: string, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot delete milestones.' }, { status: 403 });
+      }
+      const canDelete = await this.rbacService.checkUserPermission(user, 'Delete');
+      if (!canDelete) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to delete milestones.' }, { status: 403 });
+      }
+
       const ok = await this.milestoneService.deleteMilestone(milestoneId);
       if (!ok) {
         return NextResponse.json({ success: false, message: 'Milestone not found.' }, { status: 404 });

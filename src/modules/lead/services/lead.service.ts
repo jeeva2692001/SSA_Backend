@@ -287,10 +287,10 @@ export class LeadService {
       throw new Error('Question / Field Name is required.');
     }
     if (!/[a-zA-Z0-9]/.test(trimmed)) {
-      throw new Error('Question / Field Name cannot contain only special characters.');
+      throw new Error('Question should not accept special characters alone. Question / Field Name cannot contain only special characters.');
     }
     if (/^\d+$/.test(trimmed.replace(/[\s/.'&()?-]+/g, ''))) {
-      throw new Error('Question / Field Name cannot contain only numeric characters.');
+      throw new Error('Question should not accept numbers alone. Question / Field Name cannot contain only numeric characters.');
     }
     if (trimmed.length < 2) {
       throw new Error('Question / Field Name must be at least 2 characters.');
@@ -299,7 +299,7 @@ export class LeadService {
       throw new Error('Question / Field Name cannot exceed 120 characters.');
     }
     if (!/[a-zA-Z]/.test(trimmed)) {
-      throw new Error('Question / Field Name must contain at least one letter.');
+      throw new Error('Question should not accept numbers or symbols alone. Question / Field Name must contain at least one letter.');
     }
     if (!/^[a-zA-Z0-9\s&/.,():;'?!"–—+éè-]+$/.test(trimmed)) {
       throw new Error('Question / Field Name contains unsupported special characters.');

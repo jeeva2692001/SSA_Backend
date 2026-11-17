@@ -422,8 +422,8 @@ export class RbacService {
 
     const trimmed = roleName.trim();
 
-    // Super Admin & Company always have all permissions
-    if (trimmed === 'Super Admin' || trimmed === 'Super Administrator' || trimmed === 'Company') {
+    // Super Admin, Company & Admin always have all permissions
+    if (trimmed === 'Super Admin' || trimmed === 'Super Administrator' || trimmed === 'Company' || trimmed === 'Admin') {
       return { Create: true, Read: true, Update: true, Delete: true, Approve: true, Export: true };
     }
 
@@ -443,7 +443,7 @@ export class RbacService {
   ): Promise<boolean> {
     if (!user) return false;
     const role = user.role || '';
-    if (role === 'Super Admin' || role === 'Super Administrator' || role === 'Company') {
+    if (role === 'Super Admin' || role === 'Super Administrator' || role === 'Company' || role === 'Admin') {
       return true;
     }
     const permissions = await this.getUserPermissions(role);

@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ClientService } from '../services/client.service';
+import { RbacService } from '../../rbac/services/rbac.service';
 
 export class ClientController {
   private clientService: ClientService;
+  private rbacService = new RbacService();
 
   constructor() {
     this.clientService = new ClientService();
@@ -39,6 +41,14 @@ export class ClientController {
 
   async createClient(req: NextRequest, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot create client records.' }, { status: 403 });
+      }
+      const canCreate = await this.rbacService.checkUserPermission(user, 'Create');
+      if (!canCreate) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to create client records.' }, { status: 403 });
+      }
+
       const body = await req.json();
       const client = await this.clientService.createClient(body, {
         companyId: user.companyId || '',
@@ -54,6 +64,14 @@ export class ClientController {
 
   async updateClient(req: NextRequest, id: string, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot modify or overwrite Admin-created client records.' }, { status: 403 });
+      }
+      const canUpdate = await this.rbacService.checkUserPermission(user, 'Update');
+      if (!canUpdate) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to modify client records.' }, { status: 403 });
+      }
+
       const body = await req.json();
       const updated = await this.clientService.updateClient(id, body, {
         companyId: user.companyId || '',
@@ -68,6 +86,14 @@ export class ClientController {
 
   async deleteClient(req: NextRequest, id: string, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot delete client records.' }, { status: 403 });
+      }
+      const canDelete = await this.rbacService.checkUserPermission(user, 'Delete');
+      if (!canDelete) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to delete client records.' }, { status: 403 });
+      }
+
       await this.clientService.deleteClient(id);
       return NextResponse.json({ success: true, message: 'Client deleted successfully.' });
     } catch (err: any) {

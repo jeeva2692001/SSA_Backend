@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ProjectService } from '../services/project.service';
+import { RbacService } from '../../rbac/services/rbac.service';
 
 export class ProjectController {
   private projectService = new ProjectService();
+  private rbacService = new RbacService();
 
   private getCompanyId(user: any, searchParams?: URLSearchParams): string | undefined {
     if (user?.role === 'Super Admin') {
@@ -25,6 +27,13 @@ export class ProjectController {
 
   async createProject(req: NextRequest, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot create projects.' }, { status: 403 });
+      }
+      const canCreate = await this.rbacService.checkUserPermission(user, 'Create');
+      if (!canCreate) {
+        return NextResponse.json({ success: false, message: 'Access Denied: Your assigned role lacks required "Create" permission.' }, { status: 403 });
+      }
       const body = await req.json();
       if (!body.projectName || !body.projectName.trim()) {
         return NextResponse.json({ success: false, message: 'Project Name is required.' }, { status: 400 });
@@ -82,6 +91,13 @@ export class ProjectController {
 
   async updateProject(req: NextRequest, projectId: string, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot modify or overwrite Admin-created project records.' }, { status: 403 });
+      }
+      const canUpdate = await this.rbacService.checkUserPermission(user, 'Update');
+      if (!canUpdate) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to modify or overwrite this project record.' }, { status: 403 });
+      }
       const companyId = this.getCompanyId(user);
       const body = await req.json();
       const updated = await this.projectService.updateProject(projectId, body, companyId);
@@ -105,6 +121,13 @@ export class ProjectController {
 
   async deleteProject(req: NextRequest, projectId: string, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot delete project records.' }, { status: 403 });
+      }
+      const canDelete = await this.rbacService.checkUserPermission(user, 'Delete');
+      if (!canDelete) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to delete Admin-created project records.' }, { status: 403 });
+      }
       const companyId = this.getCompanyId(user);
       await this.projectService.deleteProject(projectId, companyId);
       return NextResponse.json({ success: true, message: 'Project deleted successfully' });
@@ -140,6 +163,13 @@ export class ProjectController {
 
   async addProjectDiscipline(req: NextRequest, projectId: string, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot add discipline folders.' }, { status: 403 });
+      }
+      const canCreate = await this.rbacService.checkUserPermission(user, 'Create');
+      if (!canCreate) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to add discipline folders.' }, { status: 403 });
+      }
       const body = await req.json();
       if (!body.disciplineCode) {
         return NextResponse.json({ success: false, message: 'Discipline Code is required.' }, { status: 400 });
@@ -155,6 +185,13 @@ export class ProjectController {
 
   async deleteProjectDiscipline(req: NextRequest, projectId: string, disciplineCode: string, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot delete project folders.' }, { status: 403 });
+      }
+      const canDelete = await this.rbacService.checkUserPermission(user, 'Delete');
+      if (!canDelete) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to delete project folders.' }, { status: 403 });
+      }
       const companyId = this.getCompanyId(user);
       const updatedProject = await this.projectService.deleteProjectDiscipline(projectId, disciplineCode, companyId);
       return NextResponse.json({ success: true, data: updatedProject });
@@ -201,6 +238,13 @@ export class ProjectController {
 
   async updateDrawing(req: NextRequest, drawingId: string, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot modify or overwrite Admin-created drawing records.' }, { status: 403 });
+      }
+      const canUpdate = await this.rbacService.checkUserPermission(user, 'Update');
+      if (!canUpdate) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to modify drawing records.' }, { status: 403 });
+      }
       const body = await req.json();
       const updated = await this.projectService.updateDrawing(drawingId, body);
       return NextResponse.json({ success: true, data: updated });
@@ -212,6 +256,13 @@ export class ProjectController {
 
   async finaliseDrawing(req: NextRequest, drawingId: string, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot finalise drawings.' }, { status: 403 });
+      }
+      const canApprove = await this.rbacService.checkUserPermission(user, 'Approve');
+      if (!canApprove) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to finalise drawings.' }, { status: 403 });
+      }
       const companyId = this.getCompanyId(user);
       const result = await this.projectService.finaliseDrawing(drawingId, companyId);
       return NextResponse.json({
@@ -227,6 +278,9 @@ export class ProjectController {
 
   async addDrawingRevision(req: NextRequest, drawingId: string, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot upload revisions to drawings.' }, { status: 403 });
+      }
       const body = await req.json();
       const updatedDrawing = await this.projectService.addDrawingRevision({
         drawingId,
@@ -412,6 +466,13 @@ export class ProjectController {
 
   async renameProjectFile(req: NextRequest, fileId: string, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot modify project file metadata.' }, { status: 403 });
+      }
+      const canUpdate = await this.rbacService.checkUserPermission(user, 'Update');
+      if (!canUpdate) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to modify project files.' }, { status: 403 });
+      }
       const body = await req.json();
       if (!body.fileName && body.tagLine === undefined && body.tags === undefined && body.tag === undefined && body.areaOfUsage === undefined && body.drawingType === undefined && body.isTemporary === undefined) {
         return NextResponse.json({ success: false, message: 'At least one field to update is required.' }, { status: 400 });
@@ -439,6 +500,13 @@ export class ProjectController {
 
   async deleteProjectFile(req: NextRequest, fileId: string, user: any) {
     try {
+      if (user?.role === 'Client') {
+        return NextResponse.json({ success: false, message: 'Access Denied: Clients cannot delete project files.' }, { status: 403 });
+      }
+      const canDelete = await this.rbacService.checkUserPermission(user, 'Delete');
+      if (!canDelete) {
+        return NextResponse.json({ success: false, message: 'Access Denied: You do not have permission to delete project files.' }, { status: 403 });
+      }
       const ok = await this.projectService.deleteProjectFile(fileId);
       if (!ok) {
         return NextResponse.json({ success: false, message: 'File not found.' }, { status: 404 });
