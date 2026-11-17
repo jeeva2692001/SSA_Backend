@@ -30,6 +30,30 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: false, message: 'No file provided.' }, { status: 400 });
       }
 
+      // File Format Validation (BUG-028: Reject unsupported executable, script, and archive files)
+      const fileNameLower = file.name.toLowerCase();
+      const fileExt = fileNameLower.split('.').pop() || '';
+      const DISALLOWED_EXTENSIONS = ['exe', 'msi', 'bat', 'cmd', 'sh', 'bin', 'js', 'ts', 'vbs', 'ps1', 'zip', 'rar', 'tar', 'gz', '7z', 'iso', 'dll', 'jar', 'scr', 'apk', 'app'];
+      const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'rtf', 'dwg', 'dxf', 'cad', 'rvt', 'ifc', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'];
+
+      if (DISALLOWED_EXTENSIONS.includes(fileExt) || !ALLOWED_EXTENSIONS.includes(fileExt)) {
+        return NextResponse.json({
+          success: false,
+          message: `Unsupported file format (.${fileExt}). Executable, script, and archive files (.exe, .msi, .bat, .js, .zip) are not permitted. Supported document formats: PDF, DOC, DOCX, XLS, XLSX, DWG, PNG, JPG.`
+        }, { status: 400 });
+      }
+
+      // Photograph Folder Restriction (BUG-036: TC-SSA-DOC-SITE-043)
+      if (targetFolder.includes('site_photos')) {
+        const ALLOWED_PHOTO_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+        if (!ALLOWED_PHOTO_EXTS.includes(fileExt) || (!file.type.startsWith('image/') && file.type !== '')) {
+          return NextResponse.json({
+            success: false,
+            message: `Unsupported photograph format (.${fileExt}). Only image files (JPG, JPEG, PNG, WEBP) are allowed for site inspection photographs. Documents and application files (.xlsx, .pdf, .apk) are not permitted.`
+          }, { status: 400 });
+        }
+      }
+
       const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB (accommodates DWG/CAD deliverable files)
       if (file.size > MAX_FILE_SIZE_BYTES) {
         return NextResponse.json({

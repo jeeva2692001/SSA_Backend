@@ -2,111 +2,9 @@ import { InventoryRepository, AssetFilterOptions, MaterialFilterOptions } from '
 import { AssetModel, AssetStatus, AssetType } from '../models/asset.model';
 import { MaterialStockModel, MaterialStatus } from '../models/material.model';
 
-export const INITIAL_SEEDED_ASSETS: Array<Partial<AssetModel>> = [
-  {
-    assetCode: 'AST-701',
-    assetId: 'SSA-WS-004',
-    assetName: 'Precision 7920 Workstation',
-    assetType: 'Workstation',
-    department: 'BIM & Rendering',
-    assignedTo: 'Siddharth Sen',
-    purchaseDate: '2024-03-12',
-    warrantyDate: '2027-03-12',
-    status: 'Assigned',
-    companyId: 'COM-001'
-  },
-  {
-    assetCode: 'AST-702',
-    assetId: 'SSA-SRV-02',
-    assetName: 'PowerEdge T550 Core Server',
-    assetType: 'Server',
-    department: 'IT Operations',
-    assignedTo: 'None',
-    purchaseDate: '2023-08-01',
-    warrantyDate: '2026-08-01',
-    status: 'In Stock',
-    companyId: 'COM-001'
-  },
-  {
-    assetCode: 'AST-703',
-    assetId: 'SSA-VR-01',
-    assetName: 'Oculus Quest Pro 256GB',
-    assetType: 'VR Headset',
-    department: 'Studio A',
-    assignedTo: 'Ananya Deshmukh',
-    purchaseDate: '2025-01-10',
-    warrantyDate: '2026-01-10',
-    status: 'Assigned',
-    companyId: 'COM-001'
-  },
-  {
-    assetCode: 'AST-704',
-    assetId: 'SSA-PLT-01',
-    assetName: 'HP DesignJet Z9 Wide Plotter',
-    assetType: 'Plotting Device',
-    department: 'Admin Office',
-    assignedTo: 'None',
-    purchaseDate: '2022-11-20',
-    warrantyDate: '2025-11-20',
-    status: 'Under Repair',
-    companyId: 'COM-001'
-  },
-  {
-    assetCode: 'AST-705',
-    assetId: 'SSA-LIC-08',
-    assetName: 'Autodesk Revit AEC Collection Subscription',
-    assetType: 'BIM Software License',
-    department: 'Studio B',
-    assignedTo: 'Aditi Rao',
-    purchaseDate: '2025-05-01',
-    warrantyDate: '2026-05-01',
-    status: 'Assigned',
-    companyId: 'COM-001'
-  }
-];
+export const INITIAL_SEEDED_ASSETS: Array<Partial<AssetModel>> = [];
 
-export const INITIAL_SEEDED_MATERIALS: Array<Partial<MaterialStockModel>> = [
-  {
-    materialCode: 'MAT-801',
-    materialName: 'A0 Plotting Paper Roll (80gsm)',
-    category: 'Plotting Supplies',
-    stockLevel: 25,
-    unit: 'Rolls',
-    reorderPoint: 10,
-    status: 'In Stock',
-    companyId: 'COM-001'
-  },
-  {
-    materialCode: 'MAT-802',
-    materialName: 'A1 Plotting Paper Roll (120gsm)',
-    category: 'Plotting Supplies',
-    stockLevel: 8,
-    unit: 'Rolls',
-    reorderPoint: 12,
-    status: 'Low Stock',
-    companyId: 'COM-001'
-  },
-  {
-    materialCode: 'MAT-803',
-    materialName: 'BIM Server Fiber Connectors',
-    category: 'Networking',
-    stockLevel: 45,
-    unit: 'Units',
-    reorderPoint: 15,
-    status: 'In Stock',
-    companyId: 'COM-001'
-  },
-  {
-    materialCode: 'MAT-804',
-    materialName: 'Matte Finish Texture Sample Boards',
-    category: 'Design Materials',
-    stockLevel: 0,
-    unit: 'Kits',
-    reorderPoint: 5,
-    status: 'Out of Stock',
-    companyId: 'COM-001'
-  }
-];
+export const INITIAL_SEEDED_MATERIALS: Array<Partial<MaterialStockModel>> = [];
 
 export class InventoryService {
   private repo: InventoryRepository;
@@ -151,19 +49,83 @@ export class InventoryService {
     if (!data.assetName || !data.assetName.trim()) {
       throw new Error('Asset name is required.');
     }
+    const trimmedAssetName = data.assetName.trim();
+    if (/^\d+$/.test(trimmedAssetName)) {
+      throw new Error('Asset Name / Model cannot consist solely of numeric digits. It must contain alphabetic characters.');
+    }
+    if (!/[a-zA-Z]/.test(trimmedAssetName)) {
+      throw new Error('Asset Name / Model must contain alphabetic characters and cannot consist solely of numbers or special characters.');
+    }
+
     if (!data.assetId || !data.assetId.trim()) {
       throw new Error('Asset ID / Inventory Tag is required.');
     }
+    const trimmedAssetTag = data.assetId.trim();
+    if (/^\d+$/.test(trimmedAssetTag)) {
+      throw new Error('Asset Tag / Serial Code cannot consist solely of numeric digits. It must contain letters (e.g., SSA-WS-012).');
+    }
+    if (!/[a-zA-Z]/.test(trimmedAssetTag)) {
+      throw new Error('Asset Tag / Serial Code must contain alphabetic characters and cannot consist solely of numbers or special characters.');
+    }
+    if (!/^[a-zA-Z0-9\-_/]+$/.test(trimmedAssetTag)) {
+      throw new Error('Asset Tag / Serial Code can only contain letters, numbers, hyphens (-), underscores (_), and slashes (/).');
+    }
+    if (!data.assetType || !String(data.assetType).trim()) {
+      throw new Error('Classification type is required.');
+    }
+    if (!data.department || !data.department.trim()) {
+      throw new Error('Department is required.');
+    }
+    if (!data.status || !String(data.status).trim()) {
+      throw new Error('Initial status is required.');
+    }
+    if (!data.assignedTo || !data.assignedTo.trim()) {
+      throw new Error('Assigned staff / allocation option is required.');
+    }
+
+    if (data.purchaseDate && data.warrantyDate) {
+      const pDate = new Date(data.purchaseDate);
+      const wDate = new Date(data.warrantyDate);
+      if (!isNaN(pDate.getTime()) && !isNaN(wDate.getTime()) && wDate < pDate) {
+        throw new Error('Warranty expiry date cannot be earlier than the purchase date.');
+      }
+    }
 
     const companyId = context.companyId || 'COM-001';
+
+    // Duplicate Asset check (same Asset Tag / Serial Code or same Asset Name + Tag)
+    const existingAssets = await this.repo.findAllAssets({ companyId });
+    const trimmedTag = data.assetId.trim().toLowerCase();
+    const trimmedName = data.assetName.trim().toLowerCase();
+
+    const duplicate = existingAssets.find(a =>
+      (a.assetId && a.assetId.trim().toLowerCase() === trimmedTag) ||
+      (a.id && a.id.trim().toLowerCase() === trimmedTag)
+    );
+
+    if (duplicate) {
+      if (duplicate.assetName && duplicate.assetName.trim().toLowerCase() === trimmedName) {
+        throw new Error(`Duplicate Asset: An asset with Name "${duplicate.assetName}" and Tag "${duplicate.assetId}" is already registered.`);
+      }
+      throw new Error(`Duplicate Asset Tag: An asset with Tag / Serial Code "${duplicate.assetId}" is already registered.`);
+    }
+
     const assetCode = data.assetCode || (await this.repo.getNextAssetCode());
+
+    // Synchronize assignment and status
+    let finalStatus = data.status || 'In Stock';
+    if (data.assignedTo && data.assignedTo !== 'None') {
+      finalStatus = 'Assigned';
+    } else if (finalStatus === 'Assigned') {
+      finalStatus = 'In Stock';
+    }
 
     return await this.repo.createAsset({
       ...data,
       assetCode,
       companyId,
       branchId: data.branchId ?? context.branchId ?? null,
-      status: data.status || 'In Stock'
+      status: finalStatus
     });
   }
 
@@ -172,6 +134,76 @@ export class InventoryService {
     data: Partial<AssetModel>,
     _context: { companyId?: string }
   ): Promise<AssetModel | null> {
+    const existing = await this.repo.findAssetByIdOrTag(idOrTag);
+    if (!existing) return null;
+
+    if (data.assetName !== undefined) {
+      if (!data.assetName || !data.assetName.trim()) {
+        throw new Error('Asset name is required.');
+      }
+      const trimmedAssetName = data.assetName.trim();
+      if (/^\d+$/.test(trimmedAssetName)) {
+        throw new Error('Asset Name / Model cannot consist solely of numeric digits. It must contain alphabetic characters.');
+      }
+      if (!/[a-zA-Z]/.test(trimmedAssetName)) {
+        throw new Error('Asset Name / Model must contain alphabetic characters and cannot consist solely of numbers or special characters.');
+      }
+    }
+
+    if (data.assetId !== undefined) {
+      if (!data.assetId || !data.assetId.trim()) {
+        throw new Error('Asset ID / Inventory Tag is required.');
+      }
+      const trimmedAssetTag = data.assetId.trim();
+      if (/^\d+$/.test(trimmedAssetTag)) {
+        throw new Error('Asset Tag / Serial Code cannot consist solely of numeric digits. It must contain letters (e.g., SSA-WS-012).');
+      }
+      if (!/[a-zA-Z]/.test(trimmedAssetTag)) {
+        throw new Error('Asset Tag / Serial Code must contain alphabetic characters and cannot consist solely of numbers or special characters.');
+      }
+      if (!/^[a-zA-Z0-9\-_/]+$/.test(trimmedAssetTag)) {
+        throw new Error('Asset Tag / Serial Code can only contain letters, numbers, hyphens (-), underscores (_), and slashes (/).');
+      }
+    }
+
+    const effectivePurchaseDate = data.purchaseDate !== undefined ? data.purchaseDate : existing.purchaseDate;
+    const effectiveWarrantyDate = data.warrantyDate !== undefined ? data.warrantyDate : existing.warrantyDate;
+    if (effectivePurchaseDate && effectiveWarrantyDate) {
+      const pDate = new Date(effectivePurchaseDate);
+      const wDate = new Date(effectiveWarrantyDate);
+      if (!isNaN(pDate.getTime()) && !isNaN(wDate.getTime()) && wDate < pDate) {
+        throw new Error('Warranty expiry date cannot be earlier than the purchase date.');
+      }
+    }
+
+    if (data.assetId) {
+      const companyId = _context.companyId || existing.companyId || 'COM-001';
+      const existingAssets = await this.repo.findAllAssets({ companyId });
+      const trimmedTag = data.assetId.trim().toLowerCase();
+      const trimmedName = (data.assetName || existing.assetName || '').trim().toLowerCase();
+      const duplicate = existingAssets.find(
+        a => a.id !== existing.id && (
+          (a.assetId && a.assetId.trim().toLowerCase() === trimmedTag) ||
+          (a.id && a.id.trim().toLowerCase() === trimmedTag)
+        )
+      );
+      if (duplicate) {
+        if (duplicate.assetName && duplicate.assetName.trim().toLowerCase() === trimmedName) {
+          throw new Error(`Duplicate Asset: An asset with Name "${duplicate.assetName}" and Tag "${duplicate.assetId}" is already registered.`);
+        }
+        throw new Error(`Duplicate Asset Tag: An asset with Tag / Serial Code "${duplicate.assetId}" is already registered.`);
+      }
+    }
+
+    // Synchronize assignment and status if updated
+    if (data.assignedTo !== undefined) {
+      if (data.assignedTo && data.assignedTo !== 'None') {
+        data.status = 'Assigned';
+      } else if (data.status === 'Assigned' || existing.status === 'Assigned') {
+        data.status = 'In Stock';
+      }
+    }
+
     return await this.repo.updateAsset(idOrTag, data);
   }
 
@@ -208,6 +240,13 @@ export class InventoryService {
     if (!data.materialName || !data.materialName.trim()) {
       throw new Error('Material name is required.');
     }
+    const trimmedMatName = data.materialName.trim();
+    if (/^\d+$/.test(trimmedMatName)) {
+      throw new Error('Material description cannot consist solely of numeric digits. It must contain alphabetic characters.');
+    }
+    if (!/[a-zA-Z]/.test(trimmedMatName)) {
+      throw new Error('Material description must contain alphabetic characters and cannot consist solely of numbers or special characters.');
+    }
 
     const companyId = context.companyId || 'COM-001';
     const materialCode = data.materialCode || (await this.repo.getNextMaterialCode());
@@ -234,6 +273,19 @@ export class InventoryService {
     data: Partial<MaterialStockModel>,
     _context: { companyId?: string }
   ): Promise<MaterialStockModel | null> {
+    if (data.materialName !== undefined) {
+      if (!data.materialName || !data.materialName.trim()) {
+        throw new Error('Material name is required.');
+      }
+      const trimmedMatName = data.materialName.trim();
+      if (/^\d+$/.test(trimmedMatName)) {
+        throw new Error('Material description cannot consist solely of numeric digits. It must contain alphabetic characters.');
+      }
+      if (!/[a-zA-Z]/.test(trimmedMatName)) {
+        throw new Error('Material description must contain alphabetic characters and cannot consist solely of numbers or special characters.');
+      }
+    }
+
     return await this.repo.updateMaterial(idOrCode, data);
   }
 

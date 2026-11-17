@@ -95,6 +95,13 @@ export class EmployeeService {
       throw new Error('Missing required employee fields.');
     }
 
+    const rawPhone = employeeData.phone ? employeeData.phone.replace(/\D/g, '') : '';
+    const cleanPhone = rawPhone.length === 12 && rawPhone.startsWith('91') ? rawPhone.slice(2) : rawPhone;
+    if (cleanPhone.length !== 10) {
+      throw new Error('Mobile Phone number must be exactly 10 digits.');
+    }
+    employeeData.phone = cleanPhone;
+
     // Check if employee name (which serves as login username) is already in use
     const trimmedName = employeeData.name.trim();
     const existingName = await this.employeeRepository.findByName(trimmedName);
@@ -218,7 +225,14 @@ export class EmployeeService {
       }
       employee.name = trimmedName;
     }
-    if (employeeData.phone) employee.phone = employeeData.phone;
+    if (employeeData.phone !== undefined) {
+      const rawPhone = employeeData.phone ? employeeData.phone.replace(/\D/g, '') : '';
+      const cleanPhone = rawPhone.length === 12 && rawPhone.startsWith('91') ? rawPhone.slice(2) : rawPhone;
+      if (cleanPhone.length !== 10) {
+        throw new Error('Mobile Phone number must be exactly 10 digits.');
+      }
+      employee.phone = cleanPhone;
+    }
     if (employeeData.department) employee.department = employeeData.department;
     if (employeeData.designation) employee.designation = employeeData.designation;
     if (employeeData.manager !== undefined) employee.manager = employeeData.manager;

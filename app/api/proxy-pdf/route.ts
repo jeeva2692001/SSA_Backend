@@ -100,6 +100,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const targetUrl = searchParams.get('url');
+    const isDownload = searchParams.get('download') === 'true' || searchParams.has('filename');
 
     if (!targetUrl) {
       return NextResponse.json({ success: false, message: 'URL parameter is required.' }, { status: 400 });
@@ -107,6 +108,10 @@ export async function GET(req: NextRequest) {
 
     // Decode if needed
     const decodedUrl = decodeURIComponent(targetUrl);
+    const requestedFilename = searchParams.get('filename') || decodedUrl.split('/').pop()?.split('?')[0] || 'document';
+    const contentDisposition = isDownload
+      ? `attachment; filename="${encodeURIComponent(requestedFilename)}"`
+      : 'inline';
 
     // 1. If data URL, return buffer directly
     if (decodedUrl.startsWith('data:')) {
@@ -117,7 +122,7 @@ export async function GET(req: NextRequest) {
         status: 200,
         headers: {
           'Content-Type': mime,
-          'Content-Disposition': 'inline',
+          'Content-Disposition': contentDisposition,
           'Access-Control-Allow-Origin': '*',
           'Cache-Control': 'public, max-age=31536000, immutable',
         },
@@ -249,6 +254,10 @@ export async function GET(req: NextRequest) {
     } else if (/\.(png|jpg|jpeg|webp|gif|svg)$/i.test(decodedUrl)) {
       const ext = decodedUrl.split('.').pop()?.toLowerCase();
       contentType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+    } else if (/\.(docx?)$/i.test(decodedUrl)) {
+      contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    } else if (/\.(xlsx?)$/i.test(decodedUrl)) {
+      contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     } else if (/\.(dwg|dxf|cad|rvt|ifc)$/i.test(decodedUrl)) {
       contentType = 'application/octet-stream';
     }
@@ -257,7 +266,7 @@ export async function GET(req: NextRequest) {
       status: 200,
       headers: {
         'Content-Type': contentType,
-        'Content-Disposition': 'inline',
+        'Content-Disposition': contentDisposition,
         'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'public, max-age=86400',
       },
