@@ -147,12 +147,37 @@ export class TaskService {
     data: Partial<TaskModel>,
     context: { companyId?: string; branchId?: string | null; userId?: string; userName?: string }
   ): Promise<TaskModel> {
-    if (!data.taskName || !data.taskName.trim()) {
-      throw new Error('Task title/name is required.');
+    const rawTaskName = (data.taskName || '').trim();
+    if (!rawTaskName) {
+      throw new Error('Task Title is required.');
+    }
+    if (rawTaskName.length < 2) {
+      throw new Error('Task Title must be at least 2 characters.');
+    }
+    if (rawTaskName.length > 100) {
+      throw new Error('Task Title cannot exceed 100 characters.');
+    }
+    if (!/[a-zA-Z]/.test(rawTaskName)) {
+      throw new Error('Task Title must contain letters and cannot be only numeric or special characters.');
+    }
+    if (!/^[a-zA-Z0-9\s,.'&()/#:;!?"'–—+*@_-]+$/.test(rawTaskName)) {
+      throw new Error('Task Title contains invalid characters.');
     }
 
     const companyId = context.companyId || 'COM-001';
     const taskCode = data.taskCode || (await this.taskRepo.getNextTaskCode());
+
+    // Validate and normalize priority
+    const validPriorities: TaskPriority[] = ['High', 'Medium', 'Low'];
+    let priority: TaskPriority = 'Medium';
+    if (data.priority) {
+      const matched = validPriorities.find(p => p.toLowerCase() === String(data.priority).trim().toLowerCase());
+      if (matched) {
+        priority = matched;
+      } else {
+        throw new Error('Priority must be one of: High, Medium, Low.');
+      }
+    }
 
     // Compute initial progress based on status if not provided
     const status: TaskStatus = data.status || 'Backlog';
@@ -169,6 +194,7 @@ export class TaskService {
       taskCode,
       companyId,
       branchId: data.branchId ?? context.branchId ?? null,
+      priority,
       status,
       progress,
       createdBy: context.userName || context.userId || 'System Admin'
@@ -180,6 +206,35 @@ export class TaskService {
     data: Partial<TaskModel>,
     _context: { companyId?: string; role?: string }
   ): Promise<TaskModel | null> {
+    if (data.priority !== undefined) {
+      const validPriorities: TaskPriority[] = ['High', 'Medium', 'Low'];
+      const matched = validPriorities.find(p => p.toLowerCase() === String(data.priority).trim().toLowerCase());
+      if (matched) {
+        data.priority = matched;
+      } else {
+        throw new Error('Priority must be one of: High, Medium, Low.');
+      }
+    }
+    if (data.taskName !== undefined) {
+      const rawTaskName = (data.taskName || '').trim();
+      if (!rawTaskName) {
+        throw new Error('Task Title cannot be empty.');
+      }
+      if (rawTaskName.length < 2) {
+        throw new Error('Task Title must be at least 2 characters.');
+      }
+      if (rawTaskName.length > 100) {
+        throw new Error('Task Title cannot exceed 100 characters.');
+      }
+      if (!/[a-zA-Z]/.test(rawTaskName)) {
+        throw new Error('Task Title must contain letters and cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z0-9\s,.'&()/#:;!?"'–—+*@_-]+$/.test(rawTaskName)) {
+        throw new Error('Task Title contains invalid characters.');
+      }
+      data.taskName = rawTaskName;
+    }
+
     // If status is updated and progress is not explicitly passed, compute reasonable progress
     if (data.status && data.progress === undefined) {
       if (data.status === 'Done') data.progress = 100;

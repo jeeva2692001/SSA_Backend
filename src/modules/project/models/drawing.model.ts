@@ -75,6 +75,54 @@ export class DrawingModel {
   @Column({ type: 'text', nullable: true })
   coordinationNote?: string;
 
+  @Column({ type: 'jsonb', nullable: true })
+  approvals?: any;
+
+  @Column({ type: 'jsonb', nullable: true })
+  assignedReviewers?: any;
+
+  @Column({ type: 'jsonb', nullable: true })
+  assignedReviewer?: any;
+
+  @Column({ type: 'varchar', nullable: true })
+  reviewStage?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  reviewPriority?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  reviewDueDate?: string;
+
+  @Column({ type: 'text', nullable: true })
+  reviewNotes?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  reviewedBy?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  reviewedAt?: string;
+
+  @Column({ type: 'boolean', default: false })
+  disciplineLeadApproved?: boolean;
+
+  @Column({ type: 'varchar', nullable: true })
+  disciplineLeadApprovedBy?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  disciplineLeadApprovedAt?: string;
+
+  @Column({ type: 'boolean', default: false })
+  pmApproved?: boolean;
+
+  @Column({ type: 'varchar', nullable: true })
+  pmApprovedBy?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  pmApprovedAt?: string;
+
+  @Column({ type: 'jsonb', nullable: true })
+  reviewHistory?: any;
+
   @CreateDateColumn()
   createdAt!: Date;
 

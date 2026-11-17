@@ -40,6 +40,47 @@ export class VendorService {
     return await this.vendorRepo.findByIdOrCode(idOrCode);
   }
 
+  private validateVendorInputs(data: Partial<VendorModel>): void {
+    if (data.contactPerson !== undefined && data.contactPerson !== null) {
+      const cp = data.contactPerson.trim();
+      if (cp.length > 0) {
+        if (cp.length < 2 || cp.length > 100) {
+          throw new Error('Contact person name must be between 2 and 100 characters.');
+        }
+        if (/\d/.test(cp)) {
+          throw new Error('Contact person name cannot contain numbers.');
+        }
+        if (!/[a-zA-Z]/.test(cp)) {
+          throw new Error('Contact person name must contain letters and cannot be only numeric or special characters.');
+        }
+        if (!/^[a-zA-Z\s.'-]+$/.test(cp)) {
+          throw new Error('Contact person name should contain only letters, dots, hyphens, and apostrophes.');
+        }
+      }
+    }
+
+    if (data.notes !== undefined && data.notes !== null) {
+      const notesTrim = data.notes.trim();
+      if (notesTrim.length > 0) {
+        if (notesTrim.length > 500) {
+          throw new Error('Notes cannot exceed 500 characters.');
+        }
+        if (!/[a-zA-Z0-9]/.test(notesTrim)) {
+          throw new Error('Notes cannot be only special characters.');
+        }
+        if (/^\d+$/.test(notesTrim.replace(/[\s,.'&()/#:;!?"'–—+@%*-]+/g, '')) || /^\d+$/.test(notesTrim)) {
+          throw new Error('Notes cannot be only numeric characters and must contain valid text.');
+        }
+        if (!/[a-zA-Z]/.test(notesTrim)) {
+          throw new Error('Notes must contain alphabetic text.');
+        }
+        if (!/^[a-zA-Z0-9\s,.'&()/#:;!?"'–—+@%*_-]+$/.test(notesTrim)) {
+          throw new Error('Notes contains unsupported special characters.');
+        }
+      }
+    }
+  }
+
   async createVendor(
     data: Partial<VendorModel>,
     context: { companyId?: string; branchId?: string | null; userId?: string; role?: string }
@@ -47,11 +88,31 @@ export class VendorService {
     if (!data.vendorName || !data.vendorName.trim()) {
       throw new Error('Vendor name is required.');
     }
+    this.validateVendorInputs(data);
+    const trimmedVendorName = data.vendorName.trim();
+    if (trimmedVendorName.length < 2) {
+      throw new Error('Vendor name must be at least 2 characters.');
+    }
+    if (!/[a-zA-Z]/.test(trimmedVendorName)) {
+      if (/^\d+$/.test(trimmedVendorName)) {
+        throw new Error('Vendor name cannot be only numeric values. It must contain letters.');
+      }
+      if (!/[a-zA-Z0-9]/.test(trimmedVendorName)) {
+        throw new Error('Vendor name cannot contain only special characters. It must contain letters.');
+      }
+      throw new Error('Vendor name must contain at least one letter and cannot be only numeric or special characters.');
+    }
+    if (!/^[a-zA-Z0-9\s,.'&()/#_–—-]+$/.test(trimmedVendorName)) {
+      throw new Error('Vendor name contains invalid special characters.');
+    }
 
     // Validate standard category
+    if (!data.category || !String(data.category).trim()) {
+      throw new Error('Standard category is required.');
+    }
     let category = data.category as VendorCategory;
-    if (!category || !STANDARD_CATEGORIES.includes(category)) {
-      // Map common aliases or default to Service Provider / Material Supplier
+    if (!STANDARD_CATEGORIES.includes(category)) {
+      // Map common aliases or throw error
       const catLower = String(category || '').toLowerCase();
       if (catLower.includes('material') || catLower.includes('supplier')) {
         category = 'Material Supplier';
@@ -59,9 +120,161 @@ export class VendorService {
         category = 'Contractor';
       } else if (catLower.includes('consult')) {
         category = 'Consultant';
-      } else {
+      } else if (catLower.includes('service')) {
         category = 'Service Provider';
+      } else {
+        throw new Error(`Invalid vendor category: "${category}". Must be one of: ${STANDARD_CATEGORIES.join(', ')}.`);
       }
+    }
+
+    // Validate tradeSpecialty if provided
+    let cleanTradeSpecialty: string | undefined = undefined;
+    if (data.tradeSpecialty && data.tradeSpecialty.trim()) {
+      const trimmedTrade = data.tradeSpecialty.trim();
+      if (!/[a-zA-Z]/.test(trimmedTrade)) {
+        if (/^\d+$/.test(trimmedTrade)) {
+          throw new Error('Trade specialty cannot be only numeric values. It must contain letters.');
+        }
+        if (!/[a-zA-Z0-9]/.test(trimmedTrade)) {
+          throw new Error('Trade specialty cannot contain only special characters. It must contain letters.');
+        }
+        throw new Error('Trade specialty must contain at least one letter and cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z0-9\s,.'&()/#_–—-]+$/.test(trimmedTrade)) {
+        throw new Error('Trade specialty contains invalid special characters.');
+      }
+      cleanTradeSpecialty = trimmedTrade;
+    }
+
+    // Validate contactPerson if provided
+    let cleanContactPerson: string | undefined = undefined;
+    if (data.contactPerson && data.contactPerson.trim()) {
+      const trimmedContact = data.contactPerson.trim();
+      if (!/[a-zA-Z]/.test(trimmedContact)) {
+        if (/^\d+$/.test(trimmedContact)) {
+          throw new Error('Contact person name cannot be only numeric values. It must contain letters.');
+        }
+        if (!/[a-zA-Z0-9]/.test(trimmedContact)) {
+          throw new Error('Contact person name cannot contain only special characters. It must contain letters.');
+        }
+        throw new Error('Contact person name must contain at least one letter and cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z\s.'-]+$/.test(trimmedContact)) {
+        throw new Error('Contact person name contains invalid special characters.');
+      }
+      cleanContactPerson = trimmedContact;
+    }
+
+    // Validate mobile if provided
+    let cleanMobile: string | undefined = undefined;
+    if (data.mobile && data.mobile.trim()) {
+      const rawMobile = data.mobile.replace(/\D/g, '');
+      const normalizedMobile = rawMobile.length === 12 && rawMobile.startsWith('91') ? rawMobile.slice(2) : rawMobile;
+      if (normalizedMobile.length !== 10) {
+        throw new Error('Mobile phone number must be exactly 10 digits.');
+      }
+      cleanMobile = normalizedMobile;
+    }
+
+    // Validate city if provided
+    let cleanCity: string | undefined = undefined;
+    if (data.city && data.city.trim()) {
+      const trimmedCity = data.city.trim();
+      if (trimmedCity.length < 2) {
+        throw new Error('City must be at least 2 characters.');
+      }
+      if (!/[a-zA-Z]/.test(trimmedCity)) {
+        if (/^\d+$/.test(trimmedCity)) {
+          throw new Error('City cannot be only numeric values. It must contain letters.');
+        }
+        if (!/[a-zA-Z0-9]/.test(trimmedCity)) {
+          throw new Error('City cannot contain only special characters. It must contain letters.');
+        }
+        throw new Error('City must contain at least one letter and cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z\s.'-]+$/.test(trimmedCity)) {
+        throw new Error('City contains invalid special characters.');
+      }
+      cleanCity = trimmedCity;
+    }
+
+    // Validate state if provided
+    let cleanState: string | undefined = undefined;
+    if (data.state && data.state.trim()) {
+      const trimmedState = data.state.trim();
+      if (trimmedState.length < 2) {
+        throw new Error('State must be at least 2 characters.');
+      }
+      if (!/[a-zA-Z]/.test(trimmedState)) {
+        if (/^\d+$/.test(trimmedState)) {
+          throw new Error('State cannot be only numeric values. It must contain letters.');
+        }
+        if (!/[a-zA-Z0-9]/.test(trimmedState)) {
+          throw new Error('State cannot contain only special characters. It must contain letters.');
+        }
+        throw new Error('State must contain at least one letter and cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z\s.'-]+$/.test(trimmedState)) {
+        throw new Error('State contains invalid special characters.');
+      }
+      cleanState = trimmedState;
+    }
+
+    // Validate GST number if provided
+    let cleanGstNo: string | undefined = undefined;
+    if (data.gstNo && data.gstNo.trim()) {
+      const trimmedGst = data.gstNo.trim().toUpperCase();
+      if (/[^a-zA-Z0-9]/.test(trimmedGst)) {
+        throw new Error('GST Number does not accept special characters.');
+      }
+      if (trimmedGst.length !== 15) {
+        throw new Error('GST Number must be exactly 15 alphanumeric characters.');
+      }
+      if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(trimmedGst)) {
+        throw new Error('Invalid GSTIN format (e.g. 33AABCG1234F1Z5).');
+      }
+      cleanGstNo = trimmedGst;
+    }
+
+    // Validate PAN number if provided
+    let cleanPanNo: string | undefined = undefined;
+    if (data.panNo && data.panNo.trim()) {
+      const trimmedPan = data.panNo.trim().toUpperCase();
+      if (!/[a-zA-Z0-9]/.test(trimmedPan)) {
+        throw new Error('PAN Number cannot contain only special characters.');
+      }
+      if (/[^a-zA-Z0-9]/.test(trimmedPan)) {
+        throw new Error('PAN Number does not accept special characters.');
+      }
+      if (trimmedPan.length !== 10) {
+        throw new Error('PAN Number must be exactly 10 alphanumeric characters.');
+      }
+      if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(trimmedPan)) {
+        throw new Error('Invalid PAN format (e.g. AABCG1234F).');
+      }
+      cleanPanNo = trimmedPan;
+    }
+
+    // Validate Office / Yard Address if provided
+    let cleanAddress: string | undefined = undefined;
+    if (data.address && data.address.trim()) {
+      const trimmedAddress = data.address.trim();
+      if (trimmedAddress.length < 3) {
+        throw new Error('Office / Yard Address must be at least 3 characters.');
+      }
+      if (!/[a-zA-Z0-9]/.test(trimmedAddress)) {
+        throw new Error('Office / Yard Address cannot contain only special characters.');
+      }
+      if (!/[a-zA-Z]/.test(trimmedAddress)) {
+        if (/^\d+$/.test(trimmedAddress)) {
+          throw new Error('Office / Yard Address cannot be only numeric values. It must contain letters.');
+        }
+        throw new Error('Office / Yard Address must contain at least one letter and cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z0-9\s,.'&()/#_–—:;\n\r-]+$/.test(trimmedAddress)) {
+        throw new Error('Office / Yard Address contains invalid special characters.');
+      }
+      cleanAddress = trimmedAddress;
     }
 
     const companyId = data.companyId || context.companyId || 'COM-001';
@@ -91,21 +304,21 @@ export class VendorService {
         vendor = await this.vendorRepo.create({
           ...data,
           vendorCode,
-          vendorName: data.vendorName.trim(),
+          vendorName: trimmedVendorName,
           category,
           companyId,
           branchId,
           rating: Math.min(5, Math.max(1, ratingNum)),
           approvalStatus: initialStatus,
-          contactPerson: data.contactPerson?.trim() || undefined,
-          mobile: data.mobile?.trim() || undefined,
+          contactPerson: cleanContactPerson,
+          mobile: cleanMobile,
           email: data.email?.trim() || undefined,
-          tradeSpecialty: data.tradeSpecialty?.trim() || undefined,
-          address: data.address?.trim() || undefined,
-          city: data.city?.trim() || undefined,
-          state: data.state?.trim() || undefined,
-          gstNo: data.gstNo?.trim() || undefined,
-          panNo: data.panNo?.trim() || undefined
+          tradeSpecialty: cleanTradeSpecialty,
+          address: cleanAddress,
+          city: cleanCity,
+          state: cleanState,
+          gstNo: cleanGstNo,
+          panNo: cleanPanNo
         });
         break;
       } catch (err: any) {
@@ -135,6 +348,8 @@ export class VendorService {
     data: Partial<VendorModel>,
     _context?: { companyId?: string; role?: string }
   ): Promise<VendorModel | null> {
+    this.validateVendorInputs(data);
+
     const existing = await this.vendorRepo.findByIdOrCode(id);
     if (!existing) {
       throw new Error(`Vendor with ID "${id}" not found.`);
@@ -143,17 +358,188 @@ export class VendorService {
     if (data.category && STANDARD_CATEGORIES.includes(data.category as VendorCategory)) {
       existing.category = data.category as VendorCategory;
     }
-    if (data.vendorName) existing.vendorName = data.vendorName.trim();
-    if (data.contactPerson !== undefined) existing.contactPerson = data.contactPerson?.trim();
-    if (data.mobile !== undefined) existing.mobile = data.mobile?.trim();
+    if (data.vendorName !== undefined) {
+      const trimmedVendorName = data.vendorName.trim();
+      if (!trimmedVendorName) {
+        throw new Error('Vendor name is required.');
+      }
+      if (trimmedVendorName.length < 2) {
+        throw new Error('Vendor name must be at least 2 characters.');
+      }
+      if (!/[a-zA-Z]/.test(trimmedVendorName)) {
+        if (/^\d+$/.test(trimmedVendorName)) {
+          throw new Error('Vendor name cannot be only numeric values. It must contain letters.');
+        }
+        if (!/[a-zA-Z0-9]/.test(trimmedVendorName)) {
+          throw new Error('Vendor name cannot contain only special characters. It must contain letters.');
+        }
+        throw new Error('Vendor name must contain at least one letter and cannot be only numeric or special characters.');
+      }
+      if (!/^[a-zA-Z0-9\s,.'&()/#_–—-]+$/.test(trimmedVendorName)) {
+        throw new Error('Vendor name contains invalid special characters.');
+      }
+      existing.vendorName = trimmedVendorName;
+    }
+    if (data.contactPerson !== undefined) {
+      if (data.contactPerson && data.contactPerson.trim()) {
+        const trimmedContact = data.contactPerson.trim();
+        if (!/[a-zA-Z]/.test(trimmedContact)) {
+          if (/^\d+$/.test(trimmedContact)) {
+            throw new Error('Contact person name cannot be only numeric values. It must contain letters.');
+          }
+          if (!/[a-zA-Z0-9]/.test(trimmedContact)) {
+            throw new Error('Contact person name cannot contain only special characters. It must contain letters.');
+          }
+          throw new Error('Contact person name must contain at least one letter and cannot be only numeric or special characters.');
+        }
+        if (!/^[a-zA-Z\s.'-]+$/.test(trimmedContact)) {
+          throw new Error('Contact person name contains invalid special characters.');
+        }
+        existing.contactPerson = trimmedContact;
+      } else {
+        existing.contactPerson = undefined;
+      }
+    }
+    if (data.mobile !== undefined) {
+      if (data.mobile && data.mobile.trim()) {
+        const rawMobile = data.mobile.replace(/\D/g, '');
+        const normalizedMobile = rawMobile.length === 12 && rawMobile.startsWith('91') ? rawMobile.slice(2) : rawMobile;
+        if (normalizedMobile.length !== 10) {
+          throw new Error('Mobile phone number must be exactly 10 digits.');
+        }
+        existing.mobile = normalizedMobile;
+      } else {
+        existing.mobile = undefined;
+      }
+    }
     if (data.alternatePhone !== undefined) existing.alternatePhone = data.alternatePhone?.trim();
     if (data.email !== undefined) existing.email = data.email?.trim();
-    if (data.tradeSpecialty !== undefined) existing.tradeSpecialty = data.tradeSpecialty?.trim();
-    if (data.address !== undefined) existing.address = data.address?.trim();
-    if (data.city !== undefined) existing.city = data.city?.trim();
-    if (data.state !== undefined) existing.state = data.state?.trim();
-    if (data.gstNo !== undefined) existing.gstNo = data.gstNo?.trim();
-    if (data.panNo !== undefined) existing.panNo = data.panNo?.trim();
+    if (data.tradeSpecialty !== undefined) {
+      if (data.tradeSpecialty && data.tradeSpecialty.trim()) {
+        const trimmedTrade = data.tradeSpecialty.trim();
+        if (!/[a-zA-Z]/.test(trimmedTrade)) {
+          if (/^\d+$/.test(trimmedTrade)) {
+            throw new Error('Trade specialty cannot be only numeric values. It must contain letters.');
+          }
+          if (!/[a-zA-Z0-9]/.test(trimmedTrade)) {
+            throw new Error('Trade specialty cannot contain only special characters. It must contain letters.');
+          }
+          throw new Error('Trade specialty must contain at least one letter and cannot be only numeric or special characters.');
+        }
+        if (!/^[a-zA-Z0-9\s,.'&()/#_–—-]+$/.test(trimmedTrade)) {
+          throw new Error('Trade specialty contains invalid special characters.');
+        }
+        existing.tradeSpecialty = trimmedTrade;
+      } else {
+        existing.tradeSpecialty = undefined;
+      }
+    }
+    if (data.address !== undefined) {
+      if (data.address && data.address.trim()) {
+        const trimmedAddress = data.address.trim();
+        if (trimmedAddress.length < 3) {
+          throw new Error('Office / Yard Address must be at least 3 characters.');
+        }
+        if (!/[a-zA-Z0-9]/.test(trimmedAddress)) {
+          throw new Error('Office / Yard Address cannot contain only special characters.');
+        }
+        if (!/[a-zA-Z]/.test(trimmedAddress)) {
+          if (/^\d+$/.test(trimmedAddress)) {
+            throw new Error('Office / Yard Address cannot be only numeric values. It must contain letters.');
+          }
+          throw new Error('Office / Yard Address must contain at least one letter and cannot be only numeric or special characters.');
+        }
+        if (!/^[a-zA-Z0-9\s,.'&()/#_–—:;\n\r-]+$/.test(trimmedAddress)) {
+          throw new Error('Office / Yard Address contains invalid special characters.');
+        }
+        existing.address = trimmedAddress;
+      } else {
+        existing.address = undefined;
+      }
+    }
+    if (data.city !== undefined) {
+      if (data.city && data.city.trim()) {
+        const trimmedCity = data.city.trim();
+        if (trimmedCity.length < 2) {
+          throw new Error('City must be at least 2 characters.');
+        }
+        if (!/[a-zA-Z]/.test(trimmedCity)) {
+          if (/^\d+$/.test(trimmedCity)) {
+            throw new Error('City cannot be only numeric values. It must contain letters.');
+          }
+          if (!/[a-zA-Z0-9]/.test(trimmedCity)) {
+            throw new Error('City cannot contain only special characters. It must contain letters.');
+          }
+          throw new Error('City must contain at least one letter and cannot be only numeric or special characters.');
+        }
+        if (!/^[a-zA-Z\s.'-]+$/.test(trimmedCity)) {
+          throw new Error('City contains invalid special characters.');
+        }
+        existing.city = trimmedCity;
+      } else {
+        existing.city = undefined;
+      }
+    }
+    if (data.state !== undefined) {
+      if (data.state && data.state.trim()) {
+        const trimmedState = data.state.trim();
+        if (trimmedState.length < 2) {
+          throw new Error('State must be at least 2 characters.');
+        }
+        if (!/[a-zA-Z]/.test(trimmedState)) {
+          if (/^\d+$/.test(trimmedState)) {
+            throw new Error('State cannot be only numeric values. It must contain letters.');
+          }
+          if (!/[a-zA-Z0-9]/.test(trimmedState)) {
+            throw new Error('State cannot contain only special characters. It must contain letters.');
+          }
+          throw new Error('State must contain at least one letter and cannot be only numeric or special characters.');
+        }
+        if (!/^[a-zA-Z\s.'-]+$/.test(trimmedState)) {
+          throw new Error('State contains invalid special characters.');
+        }
+        existing.state = trimmedState;
+      } else {
+        existing.state = undefined;
+      }
+    }
+    if (data.gstNo !== undefined) {
+      if (data.gstNo && data.gstNo.trim()) {
+        const trimmedGst = data.gstNo.trim().toUpperCase();
+        if (/[^a-zA-Z0-9]/.test(trimmedGst)) {
+          throw new Error('GST Number does not accept special characters.');
+        }
+        if (trimmedGst.length !== 15) {
+          throw new Error('GST Number must be exactly 15 alphanumeric characters.');
+        }
+        if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(trimmedGst)) {
+          throw new Error('Invalid GSTIN format (e.g. 33AABCG1234F1Z5).');
+        }
+        existing.gstNo = trimmedGst;
+      } else {
+        existing.gstNo = undefined;
+      }
+    }
+    if (data.panNo !== undefined) {
+      if (data.panNo && data.panNo.trim()) {
+        const trimmedPan = data.panNo.trim().toUpperCase();
+        if (!/[a-zA-Z0-9]/.test(trimmedPan)) {
+          throw new Error('PAN Number cannot contain only special characters.');
+        }
+        if (/[^a-zA-Z0-9]/.test(trimmedPan)) {
+          throw new Error('PAN Number does not accept special characters.');
+        }
+        if (trimmedPan.length !== 10) {
+          throw new Error('PAN Number must be exactly 10 alphanumeric characters.');
+        }
+        if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(trimmedPan)) {
+          throw new Error('Invalid PAN format (e.g. AABCG1234F).');
+        }
+        existing.panNo = trimmedPan;
+      } else {
+        existing.panNo = undefined;
+      }
+    }
     if (data.notes !== undefined) existing.notes = data.notes?.trim();
     if (data.rating !== undefined) {
       const num = parseFloat(String(data.rating));

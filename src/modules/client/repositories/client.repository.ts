@@ -81,6 +81,19 @@ export class ClientRepository {
     return await qb.getOne();
   }
 
+  async findByEmail(email: string, companyId?: string): Promise<ClientModel | null> {
+    const repo = await this.getClientRepo();
+    const qb = repo
+      .createQueryBuilder('client')
+      .where('LOWER(TRIM(client.email)) = LOWER(TRIM(:email))', { email });
+
+    if (companyId) {
+      qb.andWhere('client.companyId = :companyId', { companyId });
+    }
+
+    return await qb.getOne();
+  }
+
   async countClients(companyId?: string): Promise<number> {
     const repo = await this.getClientRepo();
     if (companyId) {

@@ -539,70 +539,69 @@ export class DocumentService {
 
   async createMaterialApproval(data: any, companyId?: string, user?: any) {
     const repo = await this.getMaterialApprovalRepo();
-    const id = data.id || `MAS-${Date.now().toString().slice(-4)}`;
+    const targetProject = (data.project || '').trim().toUpperCase();
+    const targetName = (data.materialName || '').trim();
+    const targetBrand = (data.proposedBrand || '').trim();
+
+    // Check for duplicate material submittal in same project
+    if (targetProject && targetName) {
+      const qb = repo.createQueryBuilder('mas')
+        .where('UPPER(TRIM(mas.project)) = :targetProject', { targetProject })
+        .andWhere('LOWER(TRIM(mas.materialName)) = LOWER(:targetName)', { targetName });
+
+      if (targetBrand) {
+        qb.andWhere('LOWER(TRIM(mas.proposedBrand)) = LOWER(:targetBrand)', { targetBrand });
+      }
+      if (companyId) {
+        qb.andWhere('(mas.companyId = :companyId OR mas.companyId IS NULL)', { companyId });
+      }
+
+      const existingDuplicate = await qb.getOne();
+      if (existingDuplicate && existingDuplicate.id !== data.id) {
+        throw new Error(`A material submittal for "${targetName}" (${targetBrand || 'Standard'}) already exists in project ${targetProject}. Duplicate material submittals are not allowed.`);
+      }
+    }
+
+    let id = data.id || `MAS-${Date.now().toString().slice(-4)}`;
     const uploader = data.uploadedBy || user?.name || user?.email || data.submittedBy || 'Contractor';
 
     let mas = await repo.findOne({ where: { id } });
-    if (!mas) {
-      mas = repo.create({
-        id,
-        companyId: companyId || user?.companyId || null,
-        branchId: data.branchId || user?.branchId || null,
-        project: (data.project || '').trim().toUpperCase(),
-        materialName: data.materialName,
-        category: data.category || 'Architectural Finishes',
-        specifiedBrand: data.specifiedBrand || null,
-        proposedBrand: data.proposedBrand || '',
-        manufacturer: data.manufacturer || null,
-        supplierOrVendor: data.supplierOrVendor || null,
-        locationOrUsage: data.locationOrUsage || null,
-        sampleSubmitted: !!data.sampleSubmitted,
-        sampleStatus: data.sampleStatus || (data.sampleSubmitted ? 'Physical Sample Submitted' : 'Spec-Sheet Only'),
-        complianceStatus: data.complianceStatus || 'Pending Review',
-        submissionDate: data.submissionDate || new Date().toISOString().split('T')[0],
-        submittedBy: data.submittedBy || uploader,
-        uploadedBy: uploader,
-        reviewerComments: data.reviewerComments || null,
-        reviewedBy: data.reviewedBy || null,
-        reviewedAt: data.reviewedAt || null,
-        specSheetUrl: data.specSheetUrl || null,
-        specSheetName: data.specSheetName || null,
-        testCertificateUrl: data.testCertificateUrl || null,
-        testCertificateName: data.testCertificateName || null,
-        samplePhotoUrl: data.samplePhotoUrl || null,
-        samplePhotoName: data.samplePhotoName || null,
-        fileSize: data.fileSize ? Number(data.fileSize) : 0,
-        description: data.description || null,
-      });
-    } else {
-      Object.assign(mas, {
-        project: data.project ? (data.project || '').trim().toUpperCase() : mas.project,
-        materialName: data.materialName ?? mas.materialName,
-        category: data.category ?? mas.category,
-        specifiedBrand: data.specifiedBrand ?? mas.specifiedBrand,
-        proposedBrand: data.proposedBrand ?? mas.proposedBrand,
-        manufacturer: data.manufacturer ?? mas.manufacturer,
-        supplierOrVendor: data.supplierOrVendor ?? mas.supplierOrVendor,
-        locationOrUsage: data.locationOrUsage ?? mas.locationOrUsage,
-        sampleSubmitted: data.sampleSubmitted !== undefined ? !!data.sampleSubmitted : mas.sampleSubmitted,
-        sampleStatus: data.sampleStatus ?? mas.sampleStatus,
-        complianceStatus: data.complianceStatus ?? mas.complianceStatus,
-        submissionDate: data.submissionDate ?? mas.submissionDate,
-        submittedBy: data.submittedBy ?? mas.submittedBy,
-        uploadedBy: uploader ?? mas.uploadedBy,
-        reviewerComments: data.reviewerComments ?? mas.reviewerComments,
-        reviewedBy: data.reviewedBy ?? mas.reviewedBy,
-        reviewedAt: data.reviewedAt ?? mas.reviewedAt,
-        specSheetUrl: data.specSheetUrl ?? mas.specSheetUrl,
-        specSheetName: data.specSheetName ?? mas.specSheetName,
-        testCertificateUrl: data.testCertificateUrl ?? mas.testCertificateUrl,
-        testCertificateName: data.testCertificateName ?? mas.testCertificateName,
-        samplePhotoUrl: data.samplePhotoUrl ?? mas.samplePhotoUrl,
-        samplePhotoName: data.samplePhotoName ?? mas.samplePhotoName,
-        fileSize: data.fileSize !== undefined ? Number(data.fileSize) : mas.fileSize,
-        description: data.description ?? mas.description,
-      });
+    if (mas) {
+      // If a record with this ID already exists, generate a new unique ID to avoid overwriting existing records
+      id = `MAS-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 1000)}`;
+      mas = null;
     }
+
+    mas = repo.create({
+      id,
+      companyId: companyId || user?.companyId || null,
+      branchId: data.branchId || user?.branchId || null,
+      project: targetProject,
+      materialName: targetName,
+      category: data.category || 'Architectural Finishes',
+      specifiedBrand: data.specifiedBrand || null,
+      proposedBrand: targetBrand,
+      manufacturer: data.manufacturer || null,
+      supplierOrVendor: data.supplierOrVendor || null,
+      locationOrUsage: data.locationOrUsage || null,
+      sampleSubmitted: !!data.sampleSubmitted,
+      sampleStatus: data.sampleStatus || (data.sampleSubmitted ? 'Physical Sample Submitted' : 'Spec-Sheet Only'),
+      complianceStatus: data.complianceStatus || 'Pending Review',
+      submissionDate: data.submissionDate || new Date().toISOString().split('T')[0],
+      submittedBy: data.submittedBy || uploader,
+      uploadedBy: uploader,
+      reviewerComments: data.reviewerComments || null,
+      reviewedBy: data.reviewedBy || null,
+      reviewedAt: data.reviewedAt || null,
+      specSheetUrl: data.specSheetUrl || null,
+      specSheetName: data.specSheetName || null,
+      testCertificateUrl: data.testCertificateUrl || null,
+      testCertificateName: data.testCertificateName || null,
+      samplePhotoUrl: data.samplePhotoUrl || null,
+      samplePhotoName: data.samplePhotoName || null,
+      fileSize: data.fileSize ? Number(data.fileSize) : 0,
+      description: data.description || null,
+    });
 
     return await repo.save(mas);
   }
@@ -641,12 +640,36 @@ export class DocumentService {
       throw new Error('Access denied to update this submittal.');
     }
 
+    // Check duplicate if name/project/brand changed
+    const targetProject = (data.project || mas.project || '').trim().toUpperCase();
+    const targetName = (data.materialName || mas.materialName || '').trim();
+    const targetBrand = (data.proposedBrand || mas.proposedBrand || '').trim();
+
+    if (targetProject && targetName) {
+      const qb = repo.createQueryBuilder('m')
+        .where('UPPER(TRIM(m.project)) = :targetProject', { targetProject })
+        .andWhere('LOWER(TRIM(m.materialName)) = LOWER(:targetName)', { targetName })
+        .andWhere('m.id != :id', { id });
+
+      if (targetBrand) {
+        qb.andWhere('LOWER(TRIM(m.proposedBrand)) = LOWER(:targetBrand)', { targetBrand });
+      }
+      if (companyId) {
+        qb.andWhere('(m.companyId = :companyId OR m.companyId IS NULL)', { companyId });
+      }
+
+      const duplicate = await qb.getOne();
+      if (duplicate) {
+        throw new Error(`A material submittal for "${targetName}" (${targetBrand || 'Standard'}) already exists in project ${targetProject}. Duplicate material submittals are not allowed.`);
+      }
+    }
+
     Object.assign(mas, {
-      project: data.project ? (data.project || '').trim().toUpperCase() : mas.project,
-      materialName: data.materialName ?? mas.materialName,
+      project: targetProject,
+      materialName: targetName,
       category: data.category ?? mas.category,
       specifiedBrand: data.specifiedBrand ?? mas.specifiedBrand,
-      proposedBrand: data.proposedBrand ?? mas.proposedBrand,
+      proposedBrand: targetBrand,
       manufacturer: data.manufacturer ?? mas.manufacturer,
       supplierOrVendor: data.supplierOrVendor ?? mas.supplierOrVendor,
       locationOrUsage: data.locationOrUsage ?? mas.locationOrUsage,
@@ -659,11 +682,12 @@ export class DocumentService {
       reviewerComments: data.reviewerComments ?? mas.reviewerComments,
       reviewedBy: data.reviewedBy ?? mas.reviewedBy,
       reviewedAt: data.reviewedAt ?? mas.reviewedAt,
-      specSheetUrl: data.specSheetUrl ?? mas.specSheetUrl,
-      specSheetName: data.specSheetName ?? mas.specSheetName,
-      testCertificateUrl: data.testCertificateUrl ?? mas.testCertificateUrl,
-      testCertificateName: data.testCertificateName ?? mas.testCertificateName,
-      samplePhotoUrl: data.samplePhotoUrl ?? mas.samplePhotoUrl,
+      // Uploaded TDS/specification files cannot be edited, deleted, removed, or replaced after upload
+      specSheetUrl: mas.specSheetUrl || data.specSheetUrl || null,
+      specSheetName: mas.specSheetName || data.specSheetName || null,
+      testCertificateUrl: mas.testCertificateUrl || data.testCertificateUrl || null,
+      testCertificateName: mas.testCertificateName || data.testCertificateName || null,
+      samplePhotoUrl: mas.samplePhotoUrl || data.samplePhotoUrl || null,
       samplePhotoName: data.samplePhotoName ?? mas.samplePhotoName,
       fileSize: data.fileSize !== undefined ? Number(data.fileSize) : mas.fileSize,
       description: data.description ?? mas.description,
@@ -872,6 +896,11 @@ export class DocumentService {
       leadSignOffDate: data.leadSignOffDate || null,
       pmSignOffName: data.pmSignOffName || null,
       summaryComments: data.summaryComments || null,
+      fileName: data.fileName || null,
+      fileUrl: data.fileUrl || null,
+      fileSize: data.fileSize ? Number(data.fileSize) : 0,
+      fileType: data.fileType || null,
+      uploadedBy: data.uploadedBy || uploader,
     });
 
     const saved = await repo.save(audit);
@@ -923,6 +952,11 @@ export class DocumentService {
       leadSignOffDate: data.leadSignOffDate ?? audit.leadSignOffDate,
       pmSignOffName: data.pmSignOffName ?? audit.pmSignOffName,
       summaryComments: data.summaryComments ?? audit.summaryComments,
+      fileName: data.fileName !== undefined ? data.fileName : audit.fileName,
+      fileUrl: data.fileUrl !== undefined ? data.fileUrl : audit.fileUrl,
+      fileSize: data.fileSize !== undefined ? Number(data.fileSize) : audit.fileSize,
+      fileType: data.fileType !== undefined ? data.fileType : audit.fileType,
+      uploadedBy: data.uploadedBy !== undefined ? data.uploadedBy : audit.uploadedBy,
     });
 
     const saved = await repo.save(audit);

@@ -55,29 +55,37 @@ export class InventoryRepository {
 
   async findAllAssets(options: AssetFilterOptions = {}): Promise<AssetModel[]> {
     const repo = await this.getAssetRepo();
-    const where: FindOptionsWhere<AssetModel> = {};
+    const baseWhere: FindOptionsWhere<AssetModel> = {};
 
-    if (options.companyId) where.companyId = options.companyId;
-    if (options.branchId) where.branchId = options.branchId;
-    if (options.assetType && options.assetType !== 'ALL') where.assetType = options.assetType as AssetType;
-    if (options.status && options.status !== 'ALL') where.status = options.status as AssetStatus;
-    if (options.department && options.department !== 'ALL') where.department = options.department;
+    if (options.branchId) baseWhere.branchId = options.branchId;
+    if (options.assetType && options.assetType !== 'ALL') baseWhere.assetType = options.assetType as AssetType;
+    if (options.status && options.status !== 'ALL') baseWhere.status = options.status as AssetStatus;
+    if (options.department && options.department !== 'ALL') baseWhere.department = options.department;
 
-    if (options.search && options.search.trim()) {
-      const q = options.search.trim();
-      return await repo.find({
-        where: [
-          { ...where, assetName: Like(`%${q}%`) },
-          { ...where, assetId: Like(`%${q}%`) },
-          { ...where, assetCode: Like(`%${q}%`) },
-          { ...where, assignedTo: Like(`%${q}%`) },
-          { ...where, department: Like(`%${q}%`) },
-        ],
-        order: { createdAt: 'DESC' }
-      });
+    const companyTargets = options.companyId
+      ? (options.companyId !== 'COM-001' ? [options.companyId, 'COM-001'] : ['COM-001'])
+      : [undefined];
+
+    const whereClauses: FindOptionsWhere<AssetModel>[] = [];
+    for (const cId of companyTargets) {
+      const w: FindOptionsWhere<AssetModel> = { ...baseWhere };
+      if (cId) w.companyId = cId;
+
+      if (options.search && options.search.trim()) {
+        const q = options.search.trim();
+        whereClauses.push(
+          { ...w, assetName: Like(`%${q}%`) },
+          { ...w, assetId: Like(`%${q}%`) },
+          { ...w, assetCode: Like(`%${q}%`) },
+          { ...w, assignedTo: Like(`%${q}%`) },
+          { ...w, department: Like(`%${q}%`) }
+        );
+      } else {
+        whereClauses.push(w);
+      }
     }
 
-    return await repo.find({ where, order: { createdAt: 'DESC' } });
+    return await repo.find({ where: whereClauses, order: { createdAt: 'DESC' } });
   }
 
   async findAssetByIdOrTag(idOrTag: string): Promise<AssetModel | null> {
@@ -135,26 +143,34 @@ export class InventoryRepository {
 
   async findAllMaterials(options: MaterialFilterOptions = {}): Promise<MaterialStockModel[]> {
     const repo = await this.getMaterialRepo();
-    const where: FindOptionsWhere<MaterialStockModel> = {};
+    const baseWhere: FindOptionsWhere<MaterialStockModel> = {};
 
-    if (options.companyId) where.companyId = options.companyId;
-    if (options.branchId) where.branchId = options.branchId;
-    if (options.category && options.category !== 'ALL') where.category = options.category;
-    if (options.status && options.status !== 'ALL') where.status = options.status as MaterialStatus;
+    if (options.branchId) baseWhere.branchId = options.branchId;
+    if (options.category && options.category !== 'ALL') baseWhere.category = options.category;
+    if (options.status && options.status !== 'ALL') baseWhere.status = options.status as MaterialStatus;
 
-    if (options.search && options.search.trim()) {
-      const q = options.search.trim();
-      return await repo.find({
-        where: [
-          { ...where, materialName: Like(`%${q}%`) },
-          { ...where, materialCode: Like(`%${q}%`) },
-          { ...where, category: Like(`%${q}%`) },
-        ],
-        order: { createdAt: 'DESC' }
-      });
+    const companyTargets = options.companyId
+      ? (options.companyId !== 'COM-001' ? [options.companyId, 'COM-001'] : ['COM-001'])
+      : [undefined];
+
+    const whereClauses: FindOptionsWhere<MaterialStockModel>[] = [];
+    for (const cId of companyTargets) {
+      const w: FindOptionsWhere<MaterialStockModel> = { ...baseWhere };
+      if (cId) w.companyId = cId;
+
+      if (options.search && options.search.trim()) {
+        const q = options.search.trim();
+        whereClauses.push(
+          { ...w, materialName: Like(`%${q}%`) },
+          { ...w, materialCode: Like(`%${q}%`) },
+          { ...w, category: Like(`%${q}%`) }
+        );
+      } else {
+        whereClauses.push(w);
+      }
     }
 
-    return await repo.find({ where, order: { createdAt: 'DESC' } });
+    return await repo.find({ where: whereClauses, order: { createdAt: 'DESC' } });
   }
 
   async findMaterialByIdOrCode(idOrCode: string): Promise<MaterialStockModel | null> {

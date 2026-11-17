@@ -81,7 +81,7 @@ export class CompanyController {
   async delete(req: NextRequest): Promise<NextResponse> {
     try {
       const { searchParams } = new URL(req.url);
-      const companyId = searchParams.get('companyId');
+      const companyId = searchParams.get('companyId') || searchParams.get('id');
 
       if (!companyId) {
         return NextResponse.json(

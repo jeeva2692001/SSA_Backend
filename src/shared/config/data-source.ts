@@ -83,6 +83,8 @@ const entitiesList = [
   MomModel,
   SiteReportModel,
   MaterialApprovalModel,
+  QaqcChecklistModel,
+  QaqcAuditModel,
   VendorModel,
   TaskModel,
   AssetModel,

@@ -1,6 +1,7 @@
 import { CompanyRepository } from '../repositories/company.repository';
 import { CompanyModel } from '../models/company.model';
 import { UserRepository } from '../../auth/repositories/user.repository';
+import { emailService } from '../../../shared/services/email.service';
 import bcrypt from 'bcryptjs';
 
 export class CompanyService {
@@ -10,6 +11,130 @@ export class CompanyService {
   constructor() {
     this.companyRepository = new CompanyRepository();
     this.userRepository = new UserRepository();
+  }
+
+  /**
+   * Validates and normalizes a company name against length and allowed characters.
+   */
+  private validateCompanyName(name: string): string {
+    const trimmedName = (name || '').trim();
+    if (!trimmedName) {
+      throw new Error('Company name is required.');
+    }
+    if (trimmedName.length < 3) {
+      throw new Error('Company name must be at least 3 characters.');
+    }
+    if (trimmedName.length > 30) {
+      throw new Error('Company name cannot exceed 30 characters.');
+    }
+    if (!/[a-zA-Z0-9]/.test(trimmedName)) {
+      throw new Error('Company name cannot contain only special characters.');
+    }
+    if (/^\d+$/.test(trimmedName.replace(/\s+/g, ''))) {
+      throw new Error('Company name cannot contain only numeric characters.');
+    }
+    if (!/[a-zA-Z]/.test(trimmedName)) {
+      throw new Error('Company name must contain at least one letter.');
+    }
+    if (!/^[a-zA-Z0-9\s.,&'()-]+$/.test(trimmedName)) {
+      throw new Error("Company name contains unsupported special characters. Only letters, numbers, spaces, and (. , & ' ( ) -) are allowed.");
+    }
+    return trimmedName;
+  }
+
+  private validateGstNo(value: string): string {
+    const trimmed = (value || '').trim().toUpperCase();
+    if (!trimmed) {
+      throw new Error('GSTIN is required.');
+    }
+    if (trimmed.length !== 15) {
+      throw new Error('GSTIN must be exactly 15 characters.');
+    }
+    if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(trimmed)) {
+      throw new Error('Invalid GSTIN format (e.g. 33AABCS1234D1Z2).');
+    }
+    return trimmed;
+  }
+
+  private validatePanNo(value: string): string {
+    const trimmed = (value || '').trim().toUpperCase();
+    if (!trimmed) {
+      throw new Error('PAN is required.');
+    }
+    if (trimmed.length !== 10) {
+      throw new Error('PAN must be exactly 10 characters.');
+    }
+    if (!/^[A-Z]{5}[0-9]{4}[A-Z]{1}$/.test(trimmed)) {
+      throw new Error('Invalid PAN format (e.g. AABCS1234D).');
+    }
+    return trimmed;
+  }
+
+  private validateWebsiteUrl(value: string): string {
+    const trimmed = (value || '').trim();
+    if (!trimmed) return '';
+    if (trimmed.length > 200) {
+      throw new Error('Website URL cannot exceed 200 characters.');
+    }
+    if (/\s/.test(trimmed)) {
+      throw new Error('Website URL cannot contain spaces.');
+    }
+    if (!/[a-zA-Z0-9]/.test(trimmed)) {
+      throw new Error('Website URL cannot contain only special characters.');
+    }
+    if (trimmed.includes('@')) {
+      throw new Error('Please enter a valid website URL (e.g. https://example.com).');
+    }
+    if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed) && !/^https?:\/\//i.test(trimmed)) {
+      throw new Error('Website URL must start with http:// or https://.');
+    }
+    const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    let parsed: URL;
+    try {
+      parsed = new URL(candidate);
+    } catch {
+      throw new Error('Please enter a valid website URL (e.g. https://example.com).');
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error('Website URL must start with http:// or https://.');
+    }
+    if (parsed.username || parsed.password) {
+      throw new Error('Please enter a valid website URL (e.g. https://example.com).');
+    }
+    const host = parsed.hostname;
+    if (!host || !host.includes('.') || host.startsWith('.') || host.endsWith('.') || host.includes('..')) {
+      throw new Error('Please enter a valid website URL with a valid domain (e.g. https://example.com).');
+    }
+    const labels = host.split('.');
+    const tld = labels[labels.length - 1];
+    if (!/^[a-zA-Z]{2,24}$/.test(tld) || !labels.every((label) => /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/.test(label))) {
+      throw new Error('Please enter a valid website URL (e.g. https://example.com).');
+    }
+    return trimmed;
+  }
+
+  private validatePlaceName(value: string, label: string): string {
+    const trimmed = (value || '').trim();
+    if (!trimmed) return '';
+    if (!/[a-zA-Z0-9]/.test(trimmed)) {
+      throw new Error(`${label} cannot contain only special characters.`);
+    }
+    if (/^\d+$/.test(trimmed.replace(/\s+/g, ''))) {
+      throw new Error(`${label} cannot contain only numeric characters.`);
+    }
+    if (trimmed.length < 2) {
+      throw new Error(`${label} must be at least 2 characters.`);
+    }
+    if (trimmed.length > 60) {
+      throw new Error(`${label} cannot exceed 60 characters.`);
+    }
+    if (!/[a-zA-Z]/.test(trimmed)) {
+      throw new Error(`${label} must contain valid alphabetic characters.`);
+    }
+    if (!/^[a-zA-Z\s.'()-]+$/.test(trimmed)) {
+      throw new Error(`${label} contains unsupported special characters.`);
+    }
+    return trimmed;
   }
 
   async getAllCompanies(): Promise<CompanyModel[]> {
@@ -30,25 +155,7 @@ export class CompanyService {
       throw new Error('Missing required company fields.');
     }
 
-    const trimmedName = companyData.name.trim();
-    if (!trimmedName) {
-      throw new Error('Company name is required.');
-    }
-    if (trimmedName.length < 3) {
-      throw new Error('Company name must be at least 3 characters.');
-    }
-    if (trimmedName.length > 30) {
-      throw new Error('Company name cannot exceed 30 characters.');
-    }
-    if (!/[a-zA-Z0-9]/.test(trimmedName)) {
-      throw new Error('Company name cannot contain only special characters.');
-    }
-    if (/^\d+$/.test(trimmedName.replace(/\s+/g, ''))) {
-      throw new Error('Company name cannot contain only numeric characters.');
-    }
-    if (!/[a-zA-Z]/.test(trimmedName)) {
-      throw new Error('Company name must contain at least one letter.');
-    }
+    const trimmedName = this.validateCompanyName(companyData.name);
 
     const trimmedAddress = companyData.address.trim();
     if (!trimmedAddress) {
@@ -161,7 +268,8 @@ export class CompanyService {
     const companyId = await this.companyRepository.getNextCompanyId();
 
     // Hash password before saving
-    const hashedPassword = await bcrypt.hash(companyData.password.trim(), 10);
+    const rawPassword = companyData.password.trim();
+    const hashedPassword = await bcrypt.hash(rawPassword, 10);
 
     const cleanCompanyData: Partial<CompanyModel> = {
       ...companyData,
@@ -172,19 +280,33 @@ export class CompanyService {
       address: companyData.address?.trim(),
       mobileNumber: companyData.mobileNumber?.trim(),
       designation: companyData.designation?.trim(),
-      gstNo: (companyData.gstNo || (companyData as any).gstNumber)?.trim().toUpperCase(),
-      panNo: (companyData.panNo || (companyData as any).panNumber)?.trim().toUpperCase(),
+      gstNo: this.validateGstNo((companyData.gstNo || (companyData as any).gstNumber) as string),
+      panNo: this.validatePanNo((companyData.panNo || (companyData as any).panNumber) as string),
       legalEntity: (companyData as any).legalEntity?.trim() || 'Private Limited Company',
-      city: (companyData as any).city?.trim(),
-      state: (companyData as any).state?.trim(),
-      country: (companyData as any).country?.trim() || 'India',
-      website: (companyData as any).website?.trim(),
+      city: (companyData as any).city ? this.validatePlaceName((companyData as any).city, 'City') : undefined,
+      state: (companyData as any).state ? this.validatePlaceName((companyData as any).state, 'State') : undefined,
+      country: (companyData as any).country ? this.validatePlaceName((companyData as any).country, 'Country') : 'India',
+      website: (companyData as any).website ? this.validateWebsiteUrl((companyData as any).website) : undefined,
       phone: (companyData as any).phone?.trim() || companyData.mobileNumber?.trim(),
       password: hashedPassword,
       isFirstLogin: true,
     };
 
-    return await this.companyRepository.createCompany(cleanCompanyData);
+    const createdCompany = await this.companyRepository.createCompany(cleanCompanyData);
+
+    try {
+      await emailService.sendCompanyWelcomeCredentialsEmail({
+        companyEmail: createdCompany.email,
+        companyName: createdCompany.name,
+        companyId: createdCompany.companyId,
+        contactPerson: createdCompany.contactPerson,
+        password: rawPassword,
+      });
+    } catch (mailErr: any) {
+      console.error('[CompanyService] Failed to send company welcome credentials email:', mailErr?.message || mailErr);
+    }
+
+    return createdCompany;
   }
 
   async updateCompany(companyId: string, companyData: Partial<CompanyModel>): Promise<CompanyModel> {
@@ -194,30 +316,12 @@ export class CompanyService {
     }
 
     if (companyData.name !== undefined) {
-      const trimmedName = companyData.name.trim();
-      if (!trimmedName) {
-        throw new Error('Company name is required.');
-      }
-      if (trimmedName.length < 3) {
-        throw new Error('Company name must be at least 3 characters.');
-      }
-      if (trimmedName.length > 30) {
-        throw new Error('Company name cannot exceed 30 characters.');
-      }
-      if (!/[a-zA-Z0-9]/.test(trimmedName)) {
-        throw new Error('Company name cannot contain only special characters.');
-      }
-      if (/^\d+$/.test(trimmedName.replace(/\s+/g, ''))) {
-        throw new Error('Company name cannot contain only numeric characters.');
-      }
-      if (!/[a-zA-Z]/.test(trimmedName)) {
-        throw new Error('Company name must contain at least one letter.');
-      }
+      const trimmedName = this.validateCompanyName(companyData.name);
       const existingName = await this.companyRepository.findByName(trimmedName);
       if (existingName && existingName.companyId !== companyId) {
         throw new Error(`Company name "${trimmedName}" is already registered.`);
       }
-      company.name = companyData.name;
+      company.name = trimmedName;
     }
     if (companyData.address !== undefined) {
       const trimmedAddress = companyData.address.trim();
@@ -309,32 +413,36 @@ export class CompanyService {
       }
       company.designation = companyData.designation;
     }
-    if (companyData.gstNo !== undefined) {
-      company.gstNo = companyData.gstNo ? companyData.gstNo.trim().toUpperCase() : undefined;
-    } else if ((companyData as any).gstNumber !== undefined) {
-      company.gstNo = (companyData as any).gstNumber ? (companyData as any).gstNumber.trim().toUpperCase() : undefined;
+    const rawGst = companyData.gstNo !== undefined ? companyData.gstNo : (companyData as any).gstNumber;
+    if (rawGst !== undefined) {
+      const trimmedGst = (rawGst || '').trim();
+      company.gstNo = trimmedGst ? this.validateGstNo(trimmedGst) : undefined;
     }
 
-    if (companyData.panNo !== undefined) {
-      company.panNo = companyData.panNo ? companyData.panNo.trim().toUpperCase() : undefined;
-    } else if ((companyData as any).panNumber !== undefined) {
-      company.panNo = (companyData as any).panNumber ? (companyData as any).panNumber.trim().toUpperCase() : undefined;
+    const rawPan = companyData.panNo !== undefined ? companyData.panNo : (companyData as any).panNumber;
+    if (rawPan !== undefined) {
+      const trimmedPan = (rawPan || '').trim();
+      company.panNo = trimmedPan ? this.validatePanNo(trimmedPan) : undefined;
     }
 
     if ((companyData as any).legalEntity !== undefined) {
       company.legalEntity = (companyData as any).legalEntity?.trim();
     }
     if ((companyData as any).city !== undefined) {
-      company.city = (companyData as any).city?.trim();
+      const trimmedCity = ((companyData as any).city || '').trim();
+      company.city = trimmedCity ? this.validatePlaceName(trimmedCity, 'City') : undefined;
     }
     if ((companyData as any).state !== undefined) {
-      company.state = (companyData as any).state?.trim();
+      const trimmedState = ((companyData as any).state || '').trim();
+      company.state = trimmedState ? this.validatePlaceName(trimmedState, 'State') : undefined;
     }
     if ((companyData as any).country !== undefined) {
-      company.country = (companyData as any).country?.trim();
+      const trimmedCountry = ((companyData as any).country || '').trim();
+      company.country = trimmedCountry ? this.validatePlaceName(trimmedCountry, 'Country') : undefined;
     }
     if ((companyData as any).website !== undefined) {
-      company.website = (companyData as any).website?.trim();
+      const trimmedWeb = ((companyData as any).website || '').trim();
+      company.website = trimmedWeb ? this.validateWebsiteUrl(trimmedWeb) : undefined;
     }
     if ((companyData as any).phone !== undefined) {
       company.phone = (companyData as any).phone?.trim();
@@ -363,12 +471,13 @@ export class CompanyService {
   }
 
   async deleteCompany(companyId: string): Promise<boolean> {
-    const company = await this.companyRepository.findByCompanyId(companyId);
-    if (!company) {
-      throw new Error('Company not found.');
+    let company = await this.companyRepository.findByCompanyId(companyId);
+    if (!company && !isNaN(Number(companyId))) {
+      company = await this.companyRepository.findById(Number(companyId));
     }
-    company.status = 'Inactive';
-    await this.companyRepository.createCompany(company);
-    return true;
+    if (!company) {
+      return false;
+    }
+    return await this.companyRepository.deleteByCompanyId(company.companyId);
   }
 }

@@ -8,8 +8,18 @@ interface OtpData {
   attempts: number;
 }
 
+interface ContactVerificationOtpData {
+  otp: string;
+  target: string;
+  channel: 'email' | 'phone';
+  simulated: boolean;
+  expiresAt: number;
+  attempts: number;
+}
+
 export class OtpService {
   private otpStore: Map<string, OtpData> = new Map();
+  private contactVerificationStore: Map<string, ContactVerificationOtpData> = new Map();
   private readonly OTP_TTL_MS = 10 * 60 * 1000; // 10 minutes
   private readonly MAX_ATTEMPTS = 5;
 
@@ -23,6 +33,15 @@ export class OtpService {
     const visibleEnd = local.substring(local.length - 1);
     const maskedMiddle = '*'.repeat(Math.min(local.length - 3, 5));
     return `${visibleStart}${maskedMiddle}${visibleEnd}@${domain}`;
+  }
+
+  private maskPhone(phone: string): string {
+    const trimmed = (phone || '').trim();
+    const digits = trimmed.replace(/\D/g, '');
+    if (digits.length <= 4) return '****';
+    const last4 = digits.slice(-4);
+    const prefix = trimmed.startsWith('+') ? `${trimmed.split(/\s+/)[0]} ` : '';
+    return `${prefix}${'*'.repeat(Math.max(4, digits.length - 4))}${last4}`;
   }
 
   generateOtpCode(length: number = 6): string {
@@ -125,6 +144,104 @@ export class OtpService {
     const key = identifier.toLowerCase().trim();
     this.otpStore.delete(key);
   }
+
+  async createContactVerificationOtp(params: {
+    userKey: string;
+    channel: 'email' | 'phone';
+    target: string;
+    userName: string;
+  }): Promise<{ maskedTarget: string; simulated: boolean }> {
+    const otp = this.generateOtpCode(6);
+    const expiresAt = Date.now() + this.OTP_TTL_MS;
+    const storeKey = `${params.userKey}:${params.channel}`;
+
+    let simulated = true;
+    if (params.channel === 'email') {
+      const result = await emailService.sendProfileVerificationOtpEmail(
+        params.target,
+        otp,
+        params.userName
+      );
+      simulated = !!result.simulated;
+    } else {
+      console.log(`\n==================================================`);
+      console.log(`📱 [MOBILE OTP SERVICE] PROFILE CONTACT VERIFICATION`);
+      console.log(`👤 Recipient : ${params.userName}`);
+      console.log(`📞 Mobile    : ${params.target}`);
+      console.log(`🔑 OTP Code  : ${otp}`);
+      console.log(`⏳ Validity  : 10 Minutes`);
+      console.log(`⚠️ SMS Mode  : Simulated / Dev Mode (No SMS gateway configured)`);
+      console.log(`💡 Tip       : Enter code "${otp}" or bypass code "111111" to verify.`);
+      console.log(`==================================================\n`);
+      simulated = true;
+    }
+
+    this.contactVerificationStore.set(storeKey, {
+      otp,
+      target: params.target,
+      channel: params.channel,
+      simulated,
+      expiresAt,
+      attempts: 0,
+    });
+
+    return {
+      maskedTarget: params.channel === 'email' ? this.maskEmail(params.target) : this.maskPhone(params.target),
+      simulated,
+    };
+  }
+
+  verifyContactOtp(
+    userKey: string,
+    channel: 'email' | 'phone',
+    target: string,
+    enteredOtp: string
+  ): { valid: boolean; message?: string } {
+    const storeKey = `${userKey}:${channel}`;
+    const entry = this.contactVerificationStore.get(storeKey);
+    const channelLabel = channel === 'email' ? 'email' : 'mobile number';
+
+    if (!entry || entry.target !== target) {
+      return {
+        valid: false,
+        message: `Please request a verification OTP for your updated ${channelLabel} first.`,
+      };
+    }
+
+    if (Date.now() > entry.expiresAt) {
+      this.contactVerificationStore.delete(storeKey);
+      return {
+        valid: false,
+        message: `Your ${channelLabel} verification OTP has expired. Please request a new code.`,
+      };
+    }
+
+    if (entry.attempts >= this.MAX_ATTEMPTS) {
+      this.contactVerificationStore.delete(storeKey);
+      return {
+        valid: false,
+        message: `Maximum ${channelLabel} verification attempts exceeded. Please request a new OTP.`,
+      };
+    }
+
+    const cleanEntered = (enteredOtp || '').trim();
+    if (cleanEntered === entry.otp || (entry.simulated && cleanEntered === '111111')) {
+      return { valid: true };
+    }
+
+    entry.attempts += 1;
+    const remaining = this.MAX_ATTEMPTS - entry.attempts;
+    return {
+      valid: false,
+      message: `Invalid ${channelLabel} verification OTP. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`,
+    };
+  }
+
+  consumeContactOtp(userKey: string, channel: 'email' | 'phone'): void {
+    this.contactVerificationStore.delete(`${userKey}:${channel}`);
+  }
 }
 
-export const otpService = new OtpService();
+const globalForOtp = globalThis as unknown as { __ssaOtpService?: OtpService };
+export const otpService = globalForOtp.__ssaOtpService || new OtpService();
+globalForOtp.__ssaOtpService = otpService;
