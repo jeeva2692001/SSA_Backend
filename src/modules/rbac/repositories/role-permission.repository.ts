@@ -19,11 +19,19 @@ export class RolePermissionRepository {
 
   async findByRole(role: string, companyId?: string): Promise<RolePermissionModel | null> {
     const repo = await this.getRepository();
-    const where: any = { role: ILike(role.trim()) };
+    const trimmed = (role || '').trim();
+    const where: any = {};
     if (companyId) {
       where.companyId = companyId;
     }
-    return await repo.findOne({ where });
+    // 1. Try exact match first
+    let record = await repo.findOne({ where: { ...where, role: trimmed } });
+    if (!record) {
+      // 2. Case-insensitive exact match escaping SQL wildcards (% and _)
+      const escaped = trimmed.replace(/[%_\\]/g, '\\$&');
+      record = await repo.findOne({ where: { ...where, role: ILike(escaped) } });
+    }
+    return record;
   }
 
   async create(data: Partial<RolePermissionModel>): Promise<RolePermissionModel> {

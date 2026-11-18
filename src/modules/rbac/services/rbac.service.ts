@@ -415,7 +415,18 @@ export class RbacService {
     const trimmed = (roleName || '').trim();
     const cid = companyId || 'COM-001';
     await this.ensureSeeded(cid);
-    const record = await this.repository.findByRole(trimmed, cid);
+
+    let record = await this.repository.findByRole(trimmed, cid);
+    if (!record) {
+      // In case roleName was passed in alternate encoding, check decoded variant safely
+      try {
+        const alt = decodeURIComponent(trimmed).trim();
+        if (alt && alt !== trimmed) {
+          record = await this.repository.findByRole(alt, cid);
+        }
+      } catch {}
+    }
+
     if (!record) {
       throw new Error(`Role "${trimmed}" does not exist.`);
     }

@@ -114,7 +114,7 @@ export class RbacController {
     }
   }
 
-  async deleteRole(req: NextRequest, user: any, roleName: string): Promise<NextResponse> {
+  async deleteRole(req: NextRequest, user: any, roleName?: string): Promise<NextResponse> {
     try {
       const isPrivileged = ['Super Admin', 'Super Administrator', 'Company', 'Admin'].includes(user?.role);
       if (!isPrivileged) {
@@ -124,12 +124,35 @@ export class RbacController {
         );
       }
 
-      if (!roleName) {
+      // Check query parameters
+      const { searchParams } = new URL(req.url);
+      const queryRole = searchParams.get('role') || searchParams.get('name');
+
+      // Check body if provided
+      let bodyRole: string | undefined;
+      try {
+        const body = await req.json();
+        bodyRole = body?.role || body?.name;
+      } catch {
+        // Body not provided or not JSON
+      }
+
+      const rawRole = (bodyRole || queryRole || roleName || '').trim();
+      if (!rawRole) {
         return NextResponse.json({ message: 'Role name is required.' }, { status: 400 });
       }
 
+      // In Next.js route params, params.name is already URL-decoded.
+      // Calling decodeURIComponent unconditionally throws URIError if rawRole contains literal '%' signs.
+      let decodedRole = rawRole;
+      try {
+        decodedRole = decodeURIComponent(rawRole).trim();
+      } catch {
+        // Fallback to raw string if decodeURIComponent throws (e.g. contains literal % signs)
+        decodedRole = rawRole;
+      }
+
       const companyId = this.getEffectiveCompanyId(req, user);
-      const decodedRole = decodeURIComponent(roleName);
       const deleted = await this.rbacService.deleteRole(decodedRole, companyId);
       if (!deleted) {
         return NextResponse.json({ message: 'Role not found or cannot be deleted.' }, { status: 404 });
@@ -138,9 +161,10 @@ export class RbacController {
       return NextResponse.json({ message: `Role "${decodedRole}" deleted successfully.` }, { status: 200 });
     } catch (error: any) {
       console.error('Error in RbacController.deleteRole:', error.message);
+      const isNotFound = error.message?.includes('does not exist');
       return NextResponse.json(
         { message: error.message || 'Failed to delete role.' },
-        { status: 400 }
+        { status: isNotFound ? 404 : 400 }
       );
     }
   }

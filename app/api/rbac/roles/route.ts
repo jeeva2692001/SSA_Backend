@@ -15,3 +15,9 @@ export async function POST(req: NextRequest) {
     return await rbacController.addRole(req, user);
   });
 }
+
+export async function DELETE(req: NextRequest) {
+  return await authMiddleware(req, async (user: any) => {
+    return await rbacController.deleteRole(req, user, '');
+  });
+}
