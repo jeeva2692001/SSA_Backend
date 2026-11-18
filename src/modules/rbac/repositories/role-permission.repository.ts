@@ -8,14 +8,22 @@ export class RolePermissionRepository {
     return dataSource.getRepository(RolePermissionModel);
   }
 
-  async findAll(): Promise<RolePermissionModel[]> {
+  async findAll(companyId?: string): Promise<RolePermissionModel[]> {
     const repo = await this.getRepository();
-    return await repo.find({ order: { id: 'ASC' } });
+    const where: any = {};
+    if (companyId) {
+      where.companyId = companyId;
+    }
+    return await repo.find({ where, order: { id: 'ASC' } });
   }
 
-  async findByRole(role: string): Promise<RolePermissionModel | null> {
+  async findByRole(role: string, companyId?: string): Promise<RolePermissionModel | null> {
     const repo = await this.getRepository();
-    return await repo.findOne({ where: { role: ILike(role.trim()) } });
+    const where: any = { role: ILike(role.trim()) };
+    if (companyId) {
+      where.companyId = companyId;
+    }
+    return await repo.findOne({ where });
   }
 
   async create(data: Partial<RolePermissionModel>): Promise<RolePermissionModel> {
@@ -29,14 +37,22 @@ export class RolePermissionRepository {
     return await repo.save(entity);
   }
 
-  async deleteByRole(role: string): Promise<boolean> {
+  async deleteByRole(role: string, companyId?: string): Promise<boolean> {
     const repo = await this.getRepository();
-    const result = await repo.delete({ role });
+    const where: any = { role: role.trim() };
+    if (companyId) {
+      where.companyId = companyId;
+    }
+    const result = await repo.delete(where);
     return (result.affected ?? 0) > 0;
   }
 
-  async count(): Promise<number> {
+  async count(companyId?: string): Promise<number> {
     const repo = await this.getRepository();
-    return await repo.count();
+    const where: any = {};
+    if (companyId) {
+      where.companyId = companyId;
+    }
+    return await repo.count({ where });
   }
 }

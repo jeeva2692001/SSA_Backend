@@ -640,7 +640,7 @@ async function main() {
     // Seed RBAC Permissions Matrix
     const { RbacService } = require('../../modules/rbac/services/rbac.service');
     const rbacService = new RbacService();
-    await rbacService.ensureSeeded();
+    await rbacService.ensureSeeded('COM-001');
     console.log('[DB-Init] Seeding RBAC Permissions Matrix complete.');
 
     // Seed Departments

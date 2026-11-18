@@ -8,9 +8,22 @@ export class RbacController {
     this.rbacService = new RbacService();
   }
 
+  private getEffectiveCompanyId(req: NextRequest, user: any): string {
+    const { searchParams } = new URL(req.url);
+    const queryCompanyId = searchParams.get('companyId');
+
+    // Super Admin can inspect another company if specified in query
+    if (user?.role === 'Super Admin' && queryCompanyId) {
+      return queryCompanyId;
+    }
+
+    return user?.companyId || (user?.role === 'Company' ? (user?.companyId || user?.userId || user?.id) : undefined) || 'COM-001';
+  }
+
   async getMatrix(req: NextRequest, user: any): Promise<NextResponse> {
     try {
-      const matrix = await this.rbacService.getMatrix();
+      const companyId = this.getEffectiveCompanyId(req, user);
+      const matrix = await this.rbacService.getMatrix(companyId);
       return NextResponse.json(matrix, { status: 200 });
     } catch (error: any) {
       console.error('Error in RbacController.getMatrix:', error.message);
@@ -23,7 +36,8 @@ export class RbacController {
 
   async getRoles(req: NextRequest, user: any): Promise<NextResponse> {
     try {
-      const roles = await this.rbacService.getRoles();
+      const companyId = this.getEffectiveCompanyId(req, user);
+      const roles = await this.rbacService.getRoles(companyId);
       return NextResponse.json(roles, { status: 200 });
     } catch (error: any) {
       console.error('Error in RbacController.getRoles:', error.message);
@@ -45,6 +59,7 @@ export class RbacController {
         );
       }
 
+      const companyId = this.getEffectiveCompanyId(req, user);
       const body = await req.json();
       const { role, permissions, description } = body;
 
@@ -55,7 +70,7 @@ export class RbacController {
         );
       }
 
-      const newRole = await this.rbacService.addRole(role, permissions, description);
+      const newRole = await this.rbacService.addRole(role, permissions, description, companyId);
       return NextResponse.json(newRole, { status: 201 });
     } catch (error: any) {
       console.error('Error in RbacController.addRole:', error.message);
@@ -77,6 +92,7 @@ export class RbacController {
         );
       }
 
+      const companyId = this.getEffectiveCompanyId(req, user);
       const body = await req.json();
       const { role, permission, value } = body;
 
@@ -87,7 +103,7 @@ export class RbacController {
         return NextResponse.json({ message: 'Permission name is required.' }, { status: 400 });
       }
 
-      const updated = await this.rbacService.togglePermission(role, permission, value);
+      const updated = await this.rbacService.togglePermission(role, permission, value, companyId);
       return NextResponse.json(updated, { status: 200 });
     } catch (error: any) {
       console.error('Error in RbacController.togglePermission:', error.message);
@@ -112,8 +128,9 @@ export class RbacController {
         return NextResponse.json({ message: 'Role name is required.' }, { status: 400 });
       }
 
+      const companyId = this.getEffectiveCompanyId(req, user);
       const decodedRole = decodeURIComponent(roleName);
-      const deleted = await this.rbacService.deleteRole(decodedRole);
+      const deleted = await this.rbacService.deleteRole(decodedRole, companyId);
       if (!deleted) {
         return NextResponse.json({ message: 'Role not found or cannot be deleted.' }, { status: 404 });
       }
@@ -134,7 +151,8 @@ export class RbacController {
 
   async getUserPermissions(req: NextRequest, user: any): Promise<NextResponse> {
     try {
-      const permissions = await this.rbacService.getUserPermissions(user?.role);
+      const companyId = this.getEffectiveCompanyId(req, user);
+      const permissions = await this.rbacService.getUserPermissions(user?.role, companyId);
       return NextResponse.json({
         role: user?.role,
         permissions,

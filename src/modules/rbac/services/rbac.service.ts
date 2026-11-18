@@ -205,44 +205,48 @@ export class RbacService {
     this.repository = new RolePermissionRepository();
   }
 
-  async ensureSeeded(): Promise<void> {
-    const count = await this.repository.count();
+  async ensureSeeded(companyId: string = 'COM-001'): Promise<void> {
+    const count = await this.repository.count(companyId);
     if (count === 0) {
-      console.log('[RBAC Seed] No roles found in database. Seeding default access matrix...');
+      console.log(`[RBAC Seed] No roles found for company "${companyId}". Seeding default access matrix...`);
       for (const item of INITIAL_DEFAULT_MATRIX) {
         await this.repository.create({
           role: item.role,
+          companyId,
           isSystem: item.isSystem,
           description: item.description,
           permissions: item.permissions,
         });
       }
-      console.log(`[RBAC Seed] Successfully seeded ${INITIAL_DEFAULT_MATRIX.length} roles and permissions.`);
+      console.log(`[RBAC Seed] Successfully seeded ${INITIAL_DEFAULT_MATRIX.length} roles and permissions for company "${companyId}".`);
     } else {
-      // Check if essential system roles exist, seed any missing ones
+      // Check if essential system roles exist for this company, seed any missing ones
       for (const item of INITIAL_DEFAULT_MATRIX) {
-        const existing = await this.repository.findByRole(item.role);
+        const existing = await this.repository.findByRole(item.role, companyId);
         if (!existing) {
           await this.repository.create({
             role: item.role,
+            companyId,
             isSystem: item.isSystem,
             description: item.description,
             permissions: item.permissions,
           });
-          console.log(`[RBAC Seed] Seeded missing role: ${item.role}`);
+          console.log(`[RBAC Seed] Seeded missing role for company "${companyId}": ${item.role}`);
         }
       }
     }
   }
 
-  async getMatrix(): Promise<RolePermissionModel[]> {
-    await this.ensureSeeded();
-    return await this.repository.findAll();
+  async getMatrix(companyId?: string): Promise<RolePermissionModel[]> {
+    const cid = companyId || 'COM-001';
+    await this.ensureSeeded(cid);
+    return await this.repository.findAll(cid);
   }
 
-  async getRoles(): Promise<string[]> {
-    await this.ensureSeeded();
-    const rows = await this.repository.findAll();
+  async getRoles(companyId?: string): Promise<string[]> {
+    const cid = companyId || 'COM-001';
+    await this.ensureSeeded(cid);
+    const rows = await this.repository.findAll(cid);
     return rows.map((r) => r.role);
   }
 
@@ -299,13 +303,14 @@ export class RbacService {
   async addRole(
     roleName: string,
     permissions?: Partial<PermissionsMap>,
-    description?: string
+    description?: string,
+    companyId: string = 'COM-001'
   ): Promise<RolePermissionModel> {
     const trimmed = this.validateRoleTitle(roleName);
     const trimmedDescription = this.validateRoleDescription(description);
 
-    await this.ensureSeeded();
-    const existing = await this.repository.findByRole(trimmed);
+    await this.ensureSeeded(companyId);
+    const existing = await this.repository.findByRole(trimmed, companyId);
     if (existing) {
       throw new Error(`Role "${trimmed}" already exists.`);
     }
@@ -322,6 +327,7 @@ export class RbacService {
 
     return await this.repository.create({
       role: trimmed,
+      companyId,
       isSystem: false,
       description: trimmedDescription || `Custom user role: ${trimmed}`,
       permissions: defaultPerms,
@@ -331,7 +337,8 @@ export class RbacService {
   async togglePermission(
     roleName: string,
     permission: string,
-    explicitValue?: boolean
+    explicitValue?: boolean,
+    companyId?: string
   ): Promise<RolePermissionModel> {
     const trimmed = (roleName || '').trim();
     if (!trimmed) {
@@ -341,8 +348,9 @@ export class RbacService {
       throw new Error('Permission name is required.');
     }
 
-    await this.ensureSeeded();
-    const record = await this.repository.findByRole(trimmed);
+    const cid = companyId || 'COM-001';
+    await this.ensureSeeded(cid);
+    const record = await this.repository.findByRole(trimmed, cid);
     if (!record) {
       throw new Error(`Role "${trimmed}" not found in database.`);
     }
@@ -373,11 +381,13 @@ export class RbacService {
 
   async updateRolePermissions(
     roleName: string,
-    permissions: PermissionsMap
+    permissions: PermissionsMap,
+    companyId?: string
   ): Promise<RolePermissionModel> {
     const trimmed = (roleName || '').trim();
-    await this.ensureSeeded();
-    const record = await this.repository.findByRole(trimmed);
+    const cid = companyId || 'COM-001';
+    await this.ensureSeeded(cid);
+    const record = await this.repository.findByRole(trimmed, cid);
     if (!record) {
       throw new Error(`Role "${trimmed}" not found.`);
     }
@@ -401,10 +411,11 @@ export class RbacService {
     return await this.repository.save(record);
   }
 
-  async deleteRole(roleName: string): Promise<boolean> {
+  async deleteRole(roleName: string, companyId?: string): Promise<boolean> {
     const trimmed = (roleName || '').trim();
-    await this.ensureSeeded();
-    const record = await this.repository.findByRole(trimmed);
+    const cid = companyId || 'COM-001';
+    await this.ensureSeeded(cid);
+    const record = await this.repository.findByRole(trimmed, cid);
     if (!record) {
       throw new Error(`Role "${trimmed}" does not exist.`);
     }
@@ -412,10 +423,10 @@ export class RbacService {
       throw new Error(`System role "${trimmed}" cannot be deleted.`);
     }
 
-    return await this.repository.deleteByRole(record.role);
+    return await this.repository.deleteByRole(record.role, cid);
   }
 
-  async getUserPermissions(roleName?: string): Promise<PermissionsMap> {
+  async getUserPermissions(roleName?: string, companyId?: string): Promise<PermissionsMap> {
     if (!roleName) {
       return { Create: false, Read: true, Update: false, Delete: false, Approve: false, Export: false };
     }
@@ -427,8 +438,9 @@ export class RbacService {
       return { Create: true, Read: true, Update: true, Delete: true, Approve: true, Export: true };
     }
 
-    await this.ensureSeeded();
-    const record = await this.repository.findByRole(trimmed);
+    const cid = companyId || 'COM-001';
+    await this.ensureSeeded(cid);
+    const record = await this.repository.findByRole(trimmed, cid);
     if (record && record.permissions) {
       return record.permissions;
     }
@@ -446,7 +458,8 @@ export class RbacService {
     if (role === 'Super Admin' || role === 'Super Administrator' || role === 'Company' || role === 'Admin') {
       return true;
     }
-    const permissions = await this.getUserPermissions(role);
+    const companyId = user.companyId || (user.role === 'Company' ? user.userId : user.companyId) || 'COM-001';
+    const permissions = await this.getUserPermissions(role, companyId);
     return !!permissions[requiredPermission];
   }
 }

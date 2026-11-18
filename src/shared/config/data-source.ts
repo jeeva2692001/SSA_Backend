@@ -252,8 +252,13 @@ export async function getDataSource(): Promise<DataSource> {
     const hasResourceAllocation = AppDataSource.entityMetadatas.some(
       m => m.name === 'ResourceAllocationModel' || m.tableName === 'resource_allocations'
     );
-    if (!hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity || !hasMilestone || !hasMaterialApproval || !hasAttendance || !hasLeave || !hasPerformance || !hasVendor || !hasTask || !hasAsset || !hasMaterial || !hasEquipment || !hasResourceAllocation) {
-      console.log('[DataSource] Re-creating AppDataSource to load new entities (EquipmentModel / ResourceAllocationModel etc)...');
+    const rolePermissionMeta = AppDataSource.entityMetadatas.find(
+      m => m.name === 'RolePermissionModel' || m.tableName === 'role_permissions'
+    );
+    const hasCompanyIdOnRolePermission = !!rolePermissionMeta?.columns.some(c => c.propertyName === 'companyId');
+
+    if (!hasCompanyIdOnRolePermission || !hasRolePermission || !hasDepartment || !hasInvoice || !hasOpportunity || !hasMilestone || !hasMaterialApproval || !hasAttendance || !hasLeave || !hasPerformance || !hasVendor || !hasTask || !hasAsset || !hasMaterial || !hasEquipment || !hasResourceAllocation) {
+      console.log('[DataSource] Re-creating AppDataSource to load new entities / updated columns (RolePermissionModel.companyId etc)...');
       try {
         await AppDataSource.destroy();
       } catch {}

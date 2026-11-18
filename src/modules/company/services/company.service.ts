@@ -294,6 +294,15 @@ export class CompanyService {
 
     const createdCompany = await this.companyRepository.createCompany(cleanCompanyData);
 
+    // Auto-seed default RBAC roles and permissions matrix for the new company
+    try {
+      const { RbacService } = await import('../../rbac/services/rbac.service');
+      const rbacService = new RbacService();
+      await rbacService.ensureSeeded(createdCompany.companyId);
+    } catch (rbacErr: any) {
+      console.error('[CompanyService] Failed to seed default RBAC matrix for new company:', rbacErr?.message || rbacErr);
+    }
+
     try {
       await emailService.sendCompanyWelcomeCredentialsEmail({
         companyEmail: createdCompany.email,
