@@ -446,6 +446,65 @@ export class OpportunityService {
     return 50;
   }
 
+  public async ensureClientForLeadOrOpp(lead: LeadModel, opp: OpportunityModel): Promise<void> {
+    try {
+      const clientRepo = new ClientRepository();
+      const scopedCompanyId = lead.companyId || opp.companyId || 'COM-001';
+
+      let client = null;
+      if (opp.clientId) {
+        client = await clientRepo.findById(opp.clientId);
+      }
+      if (!client && lead.clientId) {
+        client = await clientRepo.findById(lead.clientId);
+      }
+      if (!client && lead.mobile && lead.mobile.trim()) {
+        client = await clientRepo.findByMobile(lead.mobile.trim(), scopedCompanyId);
+      }
+
+      if (!client) {
+        const clientCode = await clientRepo.getNextClientCode();
+        const clientName = (opp.clientName || lead.clientName || lead.contactPerson || lead.company || 'Client Account').trim();
+        const company = (opp.company || lead.company || lead.organisation || clientName).trim();
+        const contactPerson = (lead.contactPerson || clientName).trim();
+        const mobile = (lead.mobile || '9999999999').replace(/\D/g, '').slice(0, 10).padStart(10, '9');
+        const email = (lead.email || `${clientCode.toLowerCase().replace(/[^a-z0-9]/g, '')}@client.com`).trim();
+
+        client = await clientRepo.create({
+          clientCode,
+          companyId: scopedCompanyId,
+          branchId: opp.branchId || lead.branchId || null,
+          clientName,
+          company,
+          contactPerson,
+          mobile,
+          email,
+          address: (lead.siteAddress || lead.locationAddress || 'Main Office / Site').trim(),
+          city: (lead.city || 'Chennai').trim(),
+          state: (lead.state || 'Tamil Nadu').trim(),
+          country: (lead.country || 'India').trim(),
+          clientType: lead.projectType || 'Corporate',
+          status: 'Active',
+          remarks: `Auto-created from Won Opportunity ${opp.dealId || opp.name}`
+        });
+      }
+
+      if (client && client.id) {
+        const ds = await getDataSource();
+        if (!opp.clientId || opp.clientId !== client.id) {
+          opp.clientId = client.id;
+          await ds.getRepository(OpportunityModel).save(opp);
+        }
+        if (!lead.clientId || lead.clientId !== client.id) {
+          lead.clientId = client.id;
+          await ds.getRepository(LeadModel).save(lead);
+        }
+      }
+    } catch (err) {
+      console.warn('[OpportunityService] ensureClientForLeadOrOpp warning:', err);
+    }
+  }
+
   async ensureSeeded(): Promise<void> {
     await this.syncLiveOpportunities();
   }

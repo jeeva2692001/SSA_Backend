@@ -99,7 +99,7 @@ export class ClientRepository {
   async getNextClientCode(year: number = new Date().getFullYear()): Promise<string> {
     const repo = await this.getClientRepo();
     const prefix = `CL-${year}-`;
-    const clients = await repo.find({ select: ['clientCode'] });
+    const clients = await repo.find({ select: { clientCode: true } });
 
     let maxSeq = 0;
     for (const c of clients) {
