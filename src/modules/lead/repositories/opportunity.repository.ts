@@ -28,7 +28,29 @@ export class OpportunityRepository {
 
   async findById(id: string): Promise<OpportunityModel | null> {
     const repo = await this.getRepo();
-    return await repo.findOne({ where: { id } });
+    if (!id || typeof id !== 'string') return null;
+    const cleanId = id.trim();
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cleanId);
+    if (isUUID) {
+      const match = await repo.findOne({ where: { id: cleanId } });
+      if (match) return match;
+    }
+    const numId = cleanId.replace(/^(OPP|LD|LEAD)-/i, '');
+    const conditions: Array<Record<string, any>> = [
+      { dealId: cleanId },
+      { leadId: cleanId },
+      { dealId: `OPP-${cleanId}` },
+      { leadId: `LD-${cleanId}` },
+      { leadId: `LEAD-${cleanId}` }
+    ];
+    if (numId && !isNaN(Number(numId))) {
+      conditions.push(
+        { leadId: numId },
+        { leadId: `LD-${numId}` },
+        { dealId: `OPP-${numId}` }
+      );
+    }
+    return await repo.findOne({ where: conditions });
   }
 
   async findByDealId(dealId: string): Promise<OpportunityModel | null> {

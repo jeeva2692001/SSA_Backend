@@ -22,34 +22,28 @@ export class ClientRepository {
 
   async findAll(companyId?: string, branchId?: string | null, search?: string): Promise<ClientModel[]> {
     const repo = await this.getClientRepo();
-    const where: FindOptionsWhere<ClientModel> = {};
+    const qb = repo.createQueryBuilder('client').orderBy('client.createdAt', 'DESC');
 
     if (companyId) {
-      where.companyId = companyId;
-    }
-    if (branchId) {
-      where.branchId = branchId;
-    }
-
-    if (search && search.trim()) {
-      const q = search.trim();
-      return await repo.find({
-        where: [
-          { ...where, clientName: Like(`%${q}%`) },
-          { ...where, company: Like(`%${q}%`) },
-          { ...where, clientCode: Like(`%${q}%`) },
-          { ...where, contactPerson: Like(`%${q}%`) },
-          { ...where, email: Like(`%${q}%`) },
-          { ...where, mobile: Like(`%${q}%`) },
-        ],
-        order: { createdAt: 'DESC' }
+      qb.andWhere('(client.companyId = :companyId OR client.companyId IS NULL OR client.companyId = :defCom)', {
+        companyId,
+        defCom: 'COM-001'
       });
     }
 
-    return await repo.find({
-      where,
-      order: { createdAt: 'DESC' }
-    });
+    if (branchId) {
+      qb.andWhere('(client.branchId = :branchId OR client.branchId IS NULL OR client.branchId = \'\')', { branchId });
+    }
+
+    if (search && search.trim()) {
+      const q = `%${search.trim()}%`;
+      qb.andWhere(
+        '(client.clientName ILIKE :q OR client.company ILIKE :q OR client.clientCode ILIKE :q OR client.contactPerson ILIKE :q OR client.email ILIKE :q OR client.mobile ILIKE :q)',
+        { q }
+      );
+    }
+
+    return await qb.getMany();
   }
 
   async findById(id: string): Promise<ClientModel | null> {
@@ -105,25 +99,37 @@ export class ClientRepository {
   async getNextClientCode(year: number = new Date().getFullYear()): Promise<string> {
     const repo = await this.getClientRepo();
     const prefix = `CL-${year}-`;
-    const clients = await repo
-      .createQueryBuilder('client')
-      .select('client.clientCode', 'clientCode')
-      .where('client.clientCode LIKE :pattern', { pattern: `${prefix}%` })
-      .getRawMany();
+    const clients = await repo.find({ select: ['clientCode'] });
 
     let maxSeq = 0;
     for (const c of clients) {
-      const parts = (c.clientCode || '').split('-');
-      if (parts.length >= 3) {
-        const seqNum = parseInt(parts[2], 10);
-        if (!isNaN(seqNum) && seqNum > maxSeq) {
-          maxSeq = seqNum;
+      const code = c.clientCode || '';
+      if (code.startsWith(prefix)) {
+        const parts = code.split('-');
+        if (parts.length >= 3) {
+          const seqNum = parseInt(parts[2], 10);
+          if (!isNaN(seqNum) && seqNum > maxSeq) {
+            maxSeq = seqNum;
+          }
+        }
+      } else {
+        const match = code.match(/CL-(\d+)$/i);
+        if (match) {
+          const seqNum = parseInt(match[1], 10);
+          if (!isNaN(seqNum) && seqNum > maxSeq) {
+            maxSeq = seqNum;
+          }
         }
       }
     }
 
-    const nextSeq = String(maxSeq + 1).padStart(3, '0');
-    return `CL-${year}-${nextSeq}`;
+    let nextSeq = maxSeq + 1;
+    let candidate = `CL-${year}-${String(nextSeq).padStart(3, '0')}`;
+    while (await repo.findOne({ where: { clientCode: candidate } })) {
+      nextSeq++;
+      candidate = `CL-${year}-${String(nextSeq).padStart(3, '0')}`;
+    }
+    return candidate;
   }
 
   async create(data: Partial<ClientModel>): Promise<ClientModel> {

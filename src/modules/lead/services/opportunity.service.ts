@@ -90,7 +90,10 @@ export class OpportunityService {
             assignedEmployee: lead.assignedEmployee || 'Unassigned',
             notes: `Live lead opportunity synchronized from ${cleanLeadId}`
           });
-          await oppModelRepo.save(newDeal);
+          const savedNew = await oppModelRepo.save(newDeal);
+          if (stage === 'Won') {
+            await this.ensureClientForLeadOrOpp(lead, savedNew);
+          }
         } else {
           // Keep live attributes in sync (name, client, budget, lead code)
           existing.name = lead.leadTitle || lead.projectName || existing.name;
@@ -133,7 +136,10 @@ export class OpportunityService {
           if (lead.clientId && (!existing.clientId || existing.clientId !== lead.clientId)) {
             existing.clientId = lead.clientId;
           }
-          await oppModelRepo.save(existing);
+          const savedExisting = await oppModelRepo.save(existing);
+          if (stage === 'Won' || existing.stage === 'Won') {
+            await this.ensureClientForLeadOrOpp(lead, savedExisting);
+          }
         }
       }
     } catch (err) {
@@ -195,7 +201,11 @@ export class OpportunityService {
           assignedEmployee: lead.assignedEmployee || 'Unassigned',
           notes: `Live lead opportunity synchronized from ${cleanLeadId}`
         });
-        return await oppModelRepo.save(newDeal);
+        const savedNew = await oppModelRepo.save(newDeal);
+        if (stage === 'Won') {
+          await this.ensureClientForLeadOrOpp(lead, savedNew);
+        }
+        return savedNew;
       } else {
         existing.name = lead.leadTitle || lead.projectName || existing.name;
         existing.company = lead.company || lead.organisation || existing.company;
@@ -212,7 +222,11 @@ export class OpportunityService {
         }
         existing.stage = stage;
         existing.probability = this.getDefaultProbabilityForStage(stage);
-        return await oppModelRepo.save(existing);
+        const savedExisting = await oppModelRepo.save(existing);
+        if (stage === 'Won' || existing.stage === 'Won') {
+          await this.ensureClientForLeadOrOpp(lead, savedExisting);
+        }
+        return savedExisting;
       }
     } catch (err) {
       console.warn('[OpportunityService] syncSingleLead warning:', err);
