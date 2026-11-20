@@ -7,8 +7,8 @@ const opportunityService = new OpportunityService();
 export async function GET(req: NextRequest) {
   return await authMiddleware(req, async (user: any) => {
     try {
-      const companyId = user.companyId || (user.role === 'Super Admin' ? undefined : user.id);
-      const branchId = user.branchId;
+      const companyId = user.companyId || (user.role === 'Super Admin' ? undefined : (user.role === 'Admin' || user.role === 'Company' ? 'COM-001' : user.id));
+      const branchId = user.role === 'Branch' ? user.branchId : undefined;
 
       await opportunityService.ensureSeeded();
 

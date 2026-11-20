@@ -21,7 +21,7 @@ export class OpportunityRepository {
       });
     }
     if (branchId) {
-      qb.andWhere('opp.branchId = :branchId', { branchId });
+      qb.andWhere('(opp.branchId = :branchId OR opp.branchId IS NULL OR opp.branchId = \'\')', { branchId });
     }
     return await qb.getMany();
   }

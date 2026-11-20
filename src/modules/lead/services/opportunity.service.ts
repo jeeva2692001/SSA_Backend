@@ -62,16 +62,24 @@ export class OpportunityService {
         }
 
         const budgetNum = parseFloat(String(lead.estimatedBudget || 0).replace(/[^0-9.]/g, '')) || 0;
-        const dealCode = lead.leadId ? lead.leadId.replace('LEAD-', 'OPP-') : `OPP-${lead.id}`;
+        const cleanLeadId = lead.leadId || `LD-${lead.id}`;
+        const dealCode = cleanLeadId.replace(/^(LEAD|LD)-/i, 'OPP-');
 
         if (!existing) {
+          // Check collision on dealId to satisfy unique constraint
+          let finalDealCode = dealCode;
+          const collision = await oppModelRepo.findOne({ where: { dealId: finalDealCode } });
+          if (collision) {
+            finalDealCode = `${dealCode}-${lead.id}`;
+          }
+
           // Create live opportunity linked to lead
           const newDeal = oppModelRepo.create({
-            dealId: dealCode,
+            dealId: finalDealCode,
             name: lead.leadTitle || lead.projectName || `Project Opportunity #${lead.id}`,
             clientName: (lead.clientName || lead.contactPerson || lead.company || 'Direct Client').trim(),
             company: lead.company || lead.organisation || lead.contactPerson || lead.clientName || 'Direct Client',
-            leadId: lead.leadId || String(lead.id),
+            leadId: cleanLeadId,
             clientId: lead.clientId || null,
             companyId: lead.companyId || companyId || 'COM-001',
             branchId: lead.branchId || branchId || null,
@@ -80,7 +88,7 @@ export class OpportunityService {
             probability: this.getDefaultProbabilityForStage(stage),
             expectedClosureDate: lead.expectedCompletionDate || '2027-12-31',
             assignedEmployee: lead.assignedEmployee || 'Unassigned',
-            notes: `Live lead opportunity synchronized from ${lead.leadId || '#' + lead.id}`
+            notes: `Live lead opportunity synchronized from ${cleanLeadId}`
           });
           await oppModelRepo.save(newDeal);
         } else {
@@ -88,6 +96,7 @@ export class OpportunityService {
           existing.name = lead.leadTitle || lead.projectName || existing.name;
           existing.company = lead.company || lead.organisation || existing.company;
           existing.clientName = (lead.clientName || lead.contactPerson || lead.company || existing.clientName || 'Direct Client').trim();
+          existing.leadId = cleanLeadId;
           if (lead.leadId) {
             existing.leadId = lead.leadId;
           }
@@ -129,6 +138,85 @@ export class OpportunityService {
       }
     } catch (err) {
       console.warn('[OpportunityService] syncLiveOpportunities warning:', err);
+    }
+  }
+
+  async syncSingleLead(lead: LeadModel): Promise<OpportunityModel | null> {
+    try {
+      const ds = await getDataSource();
+      const oppModelRepo = ds.getRepository(OpportunityModel);
+
+      const statusLower = (lead.status || '').toLowerCase();
+      let stage = 'Discovery';
+      if (statusLower.includes('won') || statusLower.includes('converted')) {
+        stage = 'Won';
+      } else if (statusLower.includes('negotiat')) {
+        stage = 'Negotiation';
+      } else if (statusLower.includes('proposal')) {
+        stage = 'Proposal Sent';
+      } else if (statusLower.includes('lost') || statusLower.includes('reject')) {
+        stage = 'Lost';
+      } else {
+        stage = 'Discovery';
+      }
+
+      const budgetNum = parseFloat(String(lead.estimatedBudget || 0).replace(/[^0-9.]/g, '')) || 0;
+      const cleanLeadId = lead.leadId || `LD-${lead.id}`;
+      const dealCode = cleanLeadId.replace(/^(LEAD|LD)-/i, 'OPP-');
+
+      let existing = await oppModelRepo.findOne({
+        where: [
+          { leadId: String(lead.id) },
+          { leadId: cleanLeadId },
+          { dealId: dealCode }
+        ]
+      });
+
+      if (!existing) {
+        let finalDealCode = dealCode;
+        const collision = await oppModelRepo.findOne({ where: { dealId: finalDealCode } });
+        if (collision) {
+          finalDealCode = `${dealCode}-${lead.id}`;
+        }
+
+        const newDeal = oppModelRepo.create({
+          dealId: finalDealCode,
+          name: lead.leadTitle || lead.projectName || `Project Opportunity #${lead.id}`,
+          clientName: (lead.clientName || lead.contactPerson || lead.company || 'Direct Client').trim(),
+          company: lead.company || lead.organisation || lead.contactPerson || lead.clientName || 'Direct Client',
+          leadId: cleanLeadId,
+          clientId: lead.clientId || null,
+          companyId: lead.companyId || 'COM-001',
+          branchId: lead.branchId || null,
+          dealValue: budgetNum,
+          stage: stage,
+          probability: this.getDefaultProbabilityForStage(stage),
+          expectedClosureDate: lead.expectedCompletionDate || '2027-12-31',
+          assignedEmployee: lead.assignedEmployee || 'Unassigned',
+          notes: `Live lead opportunity synchronized from ${cleanLeadId}`
+        });
+        return await oppModelRepo.save(newDeal);
+      } else {
+        existing.name = lead.leadTitle || lead.projectName || existing.name;
+        existing.company = lead.company || lead.organisation || existing.company;
+        existing.clientName = (lead.clientName || lead.contactPerson || lead.company || existing.clientName || 'Direct Client').trim();
+        existing.leadId = cleanLeadId;
+        if (budgetNum > 0) {
+          existing.dealValue = budgetNum;
+        }
+        if (lead.assignedEmployee) {
+          existing.assignedEmployee = lead.assignedEmployee;
+        }
+        if (lead.clientId) {
+          existing.clientId = lead.clientId;
+        }
+        existing.stage = stage;
+        existing.probability = this.getDefaultProbabilityForStage(stage);
+        return await oppModelRepo.save(existing);
+      }
+    } catch (err) {
+      console.warn('[OpportunityService] syncSingleLead warning:', err);
+      return null;
     }
   }
 

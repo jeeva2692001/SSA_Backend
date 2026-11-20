@@ -1,6 +1,7 @@
 import { LeadRepository } from '../repositories/lead.repository';
 import { LeadModel } from '../models/lead.model';
 import { ClientRepository } from '../../client/repositories/client.repository';
+import { OpportunityService } from './opportunity.service';
 
 export const DEFAULT_CATEGORY_TAGLINES: Record<string, string[]> = {
   RESIDENTIAL: [
@@ -1267,6 +1268,13 @@ export class LeadService {
 
     const lead = await this.leadRepository.createLead(leadData);
 
+    try {
+      const oppService = new OpportunityService();
+      await oppService.syncSingleLead(lead);
+    } catch (oppErr) {
+      console.warn('[LeadService] Opportunity sync on create error:', oppErr);
+    }
+
     // Save category-specific values
     let savedValues: any[] = [];
     if (requirementValues && Object.keys(requirementValues).length > 0) {
@@ -1771,6 +1779,13 @@ export class LeadService {
 
     // Save lead core
     const updatedLead = await this.leadRepository.createLead(lead);
+
+    try {
+      const oppService = new OpportunityService();
+      await oppService.syncSingleLead(updatedLead);
+    } catch (oppErr) {
+      console.warn('[LeadService] Opportunity sync on update error:', oppErr);
+    }
 
     // Save/update requirement values if provided
     let savedValues: any[] = [];
